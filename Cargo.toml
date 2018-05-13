@@ -1,0 +1,6 @@
+[package]
+name = "rainfuck"
+version = "0.1.0"
+authors = ["Stefan Lau <github@stefanlau.com>"]
+
+[dependencies]
