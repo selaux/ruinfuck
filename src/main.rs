@@ -1,6 +1,7 @@
 extern crate rustyline;
 
 use std::env;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Write, Read, BufRead, BufReader};
 use rustyline::error::ReadlineError;
@@ -12,6 +13,47 @@ const NUMBER_OF_CELLS: usize = 32768;
 struct State {
     pos: usize,
     cells: [u8; NUMBER_OF_CELLS]
+}
+
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let cell_count = 25;
+        let cells_to_show: Vec<usize> = (0..25).into_iter().map(|i| {
+            let offset = cell_count / 2;
+            let pos: i64 = self.pos as i64 + i - offset;
+
+            if pos < 0 {
+                (NUMBER_OF_CELLS as i64 + pos) as usize
+            } else if pos >= NUMBER_OF_CELLS as i64 {
+                (pos - NUMBER_OF_CELLS as i64) as usize
+            } else {
+                pos as usize
+            }
+        }).collect();
+
+        f.write_str("Brainfuck state:\n")?;
+        f.write_str("|")?;
+        for cell in &cells_to_show {
+            f.write_str(&format!("{:5}", cell))?;
+            f.write_str("|")?;
+        }
+        f.write_str("\n|")?;
+        for cell in &cells_to_show {
+            f.write_str(&format!("{:5}", self.cells[*cell]))?;
+            f.write_str("|")?;
+        }
+        f.write_str("\n|")?;
+        for cell in &cells_to_show {
+            if *cell == self.pos {
+                f.write_str("*****|")?;
+
+            } else {
+                f.write_str("     |")?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,7 +190,9 @@ fn start_repl() {
     let stdout = io::stdout();
 
     loop {
+        println!("{}", state);
         let readline = rl.readline("rf# ");
+
         match readline {
             Ok(line) => {
                 rl.add_history_entry(&line);
