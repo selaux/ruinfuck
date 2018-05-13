@@ -10,39 +10,59 @@ struct State {
     cells: [u8; NUMBER_OF_CELLS]
 }
 
-fn update_for_single_statement<R: Read, W: Write>(stdin: &mut R, stdout: &mut W, instruction: char, s: &mut State) -> Result<(), String> {
-    match instruction {
-        '>' => {
-            s.pos = if s.pos + 1 == NUMBER_OF_CELLS { 0 } else { s.pos + 1 }
-        },
-        '<' => {
-            s.pos = if s.pos == 0 { NUMBER_OF_CELLS - 1 } else { s.pos - 1 }
-        },
-        '+' => {
-            let v = s.cells[s.pos];
-            s.cells[s.pos] = if v == 255 { 0 } else { v + 1 };
-        },
-        '-' => {
-            let v = s.cells[s.pos];
-            s.cells[s.pos] = if v == 0 { 255 } else { v - 1 };
-        },
-        '.' => {
-            stdout.write(&[ s.cells[s.pos] ]).expect("Error writing to stdout");
-        },
-        ',' => {
-            let v = stdin.bytes().next().expect("Error reading stdin");
-            s.cells[s.pos] = v.expect("Error reading stdin");
-        },
-        _ => {}
-    }
-
-    Ok(())
-}
-
 #[derive(Clone)]
 enum Node {
     Instruction(char),
     Conditional(Vec<Node>)
+}
+
+fn run_block<R: Read, W: Write>(stdin: &mut R, stdout: &mut W, block: &Vec<Node>, s: &mut State) -> Result<(), String> {
+    for node in block {
+        node.execute(stdin, stdout, s)?;
+    }
+    Ok(())
+}
+
+
+impl Node {
+    fn execute<R: Read, W: Write>(&self, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), String> {
+        match self {
+            Node::Conditional(body) => {
+                while s.cells[s.pos] != 0 {
+                    run_block(stdin, stdout, body, s)?;
+                }
+                Ok(())
+            },
+            Node::Instruction('>') => {
+                s.pos = if s.pos + 1 == NUMBER_OF_CELLS { 0 } else { s.pos + 1 };
+                Ok(())
+            },
+            Node::Instruction('<') => {
+                s.pos = if s.pos == 0 { NUMBER_OF_CELLS - 1 } else { s.pos - 1 };
+                Ok(())
+            },
+            Node::Instruction('+') => {
+                let v = s.cells[s.pos];
+                s.cells[s.pos] = if v == 255 { 0 } else { v + 1 };
+                Ok(())
+            },
+            Node::Instruction('-') => {
+                let v = s.cells[s.pos];
+                s.cells[s.pos] = if v == 0 { 255 } else { v - 1 };
+                Ok(())
+            },
+            Node::Instruction('.') => {
+                stdout.write(&[ s.cells[s.pos] ]).expect("Error writing to stdout");
+                Ok(())
+            },
+            Node::Instruction(',') => {
+                let v = stdin.bytes().next().expect("Error reading stdin");
+                s.cells[s.pos] = v.expect("Error reading stdin");
+                Ok(())
+            },
+            _ => Ok(())
+        }
+    }
 }
 
 fn parse_code<F: BufRead>(code: &mut F) -> Vec<Node> {
@@ -64,21 +84,6 @@ fn parse_code<F: BufRead>(code: &mut F) -> Vec<Node> {
         }
     }
     (*stack.last().unwrap()).clone()
-}
-
-fn run_block<R: Read, W: Write>(stdin: &mut R, stdout: &mut W, block: &Vec<Node>, s: &mut State) -> Result<(), String> {
-    for node in block {
-        match node {
-            Node::Conditional(c) => {
-                while s.cells[s.pos] != 0 {
-                    run_block(stdin, stdout, c, s)?;
-                }
-            },
-            Node::Instruction(i) => update_for_single_statement(stdin, stdout, *i, s).expect("Error executing")
-        }
-    }
-
-    Ok(())
 }
 
 fn run_code<F: BufRead, R: Read, W: Write>(code: &mut F, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), String> {
@@ -107,7 +112,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '>', &mut s).unwrap();
+        Node::Instruction('>').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 1);
@@ -120,7 +125,7 @@ mod tests {
         let initial_state = State { pos: NUMBER_OF_CELLS - 1, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '>', &mut s).unwrap();
+        Node::Instruction('>').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 0);
@@ -133,7 +138,7 @@ mod tests {
         let initial_state = State { pos: 1, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '<', &mut s).unwrap();
+        Node::Instruction('<').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 0);
@@ -146,7 +151,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '<', &mut s).unwrap();
+        Node::Instruction('<').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, NUMBER_OF_CELLS - 1);
@@ -159,7 +164,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '+', &mut s).unwrap();
+        Node::Instruction('+').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 1);
@@ -173,7 +178,7 @@ mod tests {
         let mut s = initial_state.clone();
 
         s.cells[0] = 255;
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '+', &mut s).unwrap();
+        Node::Instruction('+').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 0);
@@ -186,7 +191,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '-', &mut s).unwrap();
+        Node::Instruction('-').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 0);
@@ -199,7 +204,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '-', &mut s).unwrap();
+        Node::Instruction('-').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 255);
@@ -212,7 +217,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, ',', &mut s).unwrap();
+        Node::Instruction(',').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 'b' as u8);
@@ -225,7 +230,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        update_for_single_statement(&mut stdin.as_slice(), &mut stdout, '.', &mut s).unwrap();
+        Node::Instruction('.').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(stdout.len(), 1);
