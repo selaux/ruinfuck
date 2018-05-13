@@ -7,7 +7,7 @@ use std::io::{self, Write, Read, BufRead, BufReader};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-const NUMBER_OF_CELLS: usize = 32768;
+const NUMBER_OF_CELLS: usize = 131072;
 
 #[derive(Clone)]
 struct State {
@@ -34,21 +34,21 @@ impl fmt::Display for State {
         f.write_str("Brainfuck state:\n")?;
         f.write_str("|")?;
         for cell in &cells_to_show {
-            f.write_str(&format!("{:5}", cell))?;
+            f.write_str(&format!("{:6}", cell))?;
             f.write_str("|")?;
         }
         f.write_str("\n|")?;
         for cell in &cells_to_show {
-            f.write_str(&format!("{:5}", self.cells[*cell]))?;
+            f.write_str(&format!("{:6}", self.cells[*cell]))?;
             f.write_str("|")?;
         }
         f.write_str("\n|")?;
         for cell in &cells_to_show {
             if *cell == self.pos {
-                f.write_str("*****|")?;
+                f.write_str("******|")?;
 
             } else {
-                f.write_str("     |")?;
+                f.write_str("      |")?;
             }
         }
 
