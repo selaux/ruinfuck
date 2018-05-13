@@ -58,8 +58,30 @@ impl fmt::Display for State {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Node {
-    Instruction(char),
-    Conditional(Vec<Node>)
+    Right(u8),
+    Left(u8),
+    Inc(u8),
+    Dec(u8),
+    Out,
+    In,
+    Conditional(Vec<Node>),
+    Comment(char),
+}
+
+impl From<char> for Node {
+    fn from(c: char) -> Node {
+        match c {
+            '>' => Node::Right(1),
+            '<' => Node::Left(1),
+            '+' => Node::Inc(1),
+            '-' => Node::Dec(1),
+            '.' => Node::Out,
+            ',' => Node::In,
+            '[' => unreachable!(),
+            ']' => unreachable!(),
+            c => Node::Comment(c)
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -99,29 +121,29 @@ impl Node {
                 }
                 Ok(())
             },
-            Node::Instruction('>') => {
-                s.pos = if s.pos + 1 == NUMBER_OF_CELLS { 0 } else { s.pos + 1 };
+            Node::Right(i) => {
+                s.pos = (s.pos + *i as usize) % NUMBER_OF_CELLS;
                 Ok(())
             },
-            Node::Instruction('<') => {
-                s.pos = if s.pos == 0 { NUMBER_OF_CELLS - 1 } else { s.pos - 1 };
+            Node::Left(i) => {
+                s.pos = if (s.pos as i64 - *i as i64) < 0 { NUMBER_OF_CELLS - (*i as i64 - s.pos as i64) as usize } else { s.pos - *i as usize };
                 Ok(())
             },
-            Node::Instruction('+') => {
+            Node::Inc(i) => {
                 let v = s.cells[s.pos];
-                s.cells[s.pos] = if v == 255 { 0 } else { v + 1 };
+                s.cells[s.pos] = ((v as u16 + *i as u16) % 256) as u8;
                 Ok(())
             },
-            Node::Instruction('-') => {
+            Node::Dec(i) => {
                 let v = s.cells[s.pos];
-                s.cells[s.pos] = if v == 0 { 255 } else { v - 1 };
+                s.cells[s.pos] = if (v as i16 - *i as i16) < 0 { (256 - (*i as i16 - v as i16) as u16) as u8 } else { v - *i };
                 Ok(())
             },
-            Node::Instruction('.') => {
+            Node::Out => {
                 stdout.write(&[ s.cells[s.pos] ]).map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
                 Ok(())
             },
-            Node::Instruction(',') => {
+            Node::In => {
                 let v = stdin.bytes().next().ok_or(RuntimeError::ReadError("No data from stdin".to_string()))?;
                 s.cells[s.pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
                 Ok(())
@@ -150,7 +172,7 @@ fn parse_code<F: BufRead>(code: &mut F) -> Result<Vec<Node>, ParserError> {
                 let body = nested.pop().ok_or(ParserError::Internal)?;
                 nested.last_mut().ok_or(ParserError::Internal)?.push(Node::Conditional(body))
             },
-            c => nested.last_mut().ok_or(ParserError::Internal)?.push(Node::Instruction(c))
+            c => nested.last_mut().ok_or(ParserError::Internal)?.push(Node::from(c))
         }
     }
 
@@ -166,9 +188,93 @@ fn parse_code<F: BufRead>(code: &mut F) -> Result<Vec<Node>, ParserError> {
     Ok(res.clone())
 }
 
+fn filter_comments(n: &Node) -> Option<Node> {
+    match n {
+        Node::Comment(_) => None,
+        Node::Conditional(body) => {
+            let v: Vec<Node> = body
+                .into_iter()
+                .flat_map(filter_comments)
+                .collect();
+            Some(Node::Conditional(v))
+        },
+        _ => Some(n.clone())
+    }
+}
+
+fn join_repeated_operators(code_without_comments: &Vec<Node>) -> Vec<Node> {
+    code_without_comments.into_iter().fold(vec!(), |acc, c| {
+        let mut acc_new: Vec<Node> = acc.clone();
+        let last = acc_new.pop();
+
+        match (&last, c) {
+            (Some(Node::Right(x)), Node::Right(y)) => {
+                if *x as u16 + *y as u16 > 255 {
+                    acc_new.push(Node::Right(*x));
+                    acc_new.push(Node::Right(*y));
+                } else {
+                    acc_new.push(Node::Right(x + y));
+                }
+            },
+            (Some(Node::Left(x)), Node::Left(y)) => {
+                if *x as u16 + *y as u16 > 255 {
+                    acc_new.push(Node::Left(*x));
+                    acc_new.push(Node::Left(*y));
+                } else {
+                    acc_new.push(Node::Left(x + y));
+                }
+            },
+            (Some(Node::Inc(x)), Node::Inc(y)) => {
+                if *x as u16 + *y as u16 > 255 {
+                    acc_new.push(Node::Inc(*x));
+                    acc_new.push(Node::Inc(*y));
+                } else {
+                    acc_new.push(Node::Inc(x + y));
+                }
+            },
+            (Some(Node::Dec(x)), Node::Dec(y)) => {
+                if *x as u16 + *y as u16 > 255 {
+                    acc_new.push(Node::Dec(*x));
+                    acc_new.push(Node::Dec(*y));
+                } else {
+                    acc_new.push(Node::Dec(x + y));
+                }
+            },
+            (l, Node::Conditional(body)) => {
+                match l {
+                    Some(c) => acc_new.push(c.clone()),
+                    None => {}
+                }
+
+                acc_new.push(Node::Conditional(join_repeated_operators(body)));
+            },
+            (l, c) => {
+                match l {
+                    Some(c) => acc_new.push(c.clone()),
+                    None => {}
+                }
+                acc_new.push(c.clone());
+            }
+        };
+
+        acc_new
+    })
+}
+
+fn optimize_code(code: &Vec<Node>) -> Vec<Node> {
+    let without_comments: Vec<Node> = code
+        .into_iter()
+        .flat_map(filter_comments)
+        .collect();
+    let joined_operators = join_repeated_operators(&without_comments);
+
+    joined_operators
+}
+
 fn run_code<F: BufRead, R: Read, W: Write>(code: &mut F, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), ExecutionError> {
     let parsed = parse_code(code).map_err(ExecutionError::Parse)?;
-    return run_block(stdin, stdout, &parsed, s).map_err(ExecutionError::Run);
+    let optimized = optimize_code(&parsed);
+    return run_block(stdin, stdout, &optimized, s).map_err(ExecutionError::Run);
 }
 
 fn start_script(path: &str) -> Result<(), ExecutionError> {
@@ -238,7 +344,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('>').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Right(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 1);
@@ -251,10 +357,10 @@ mod tests {
         let initial_state = State { pos: NUMBER_OF_CELLS - 1, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('>').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Right(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
-        assert_eq!(s.pos, 0);
+        assert_eq!(s.pos, 2);
     }
 
     #[test]
@@ -264,7 +370,7 @@ mod tests {
         let initial_state = State { pos: 1, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('<').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Left(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 0);
@@ -277,10 +383,10 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('<').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Left(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
-        assert_eq!(s.pos, NUMBER_OF_CELLS - 1);
+        assert_eq!(s.pos, NUMBER_OF_CELLS - 3);
     }
 
     #[test]
@@ -290,7 +396,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('+').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 1);
@@ -304,10 +410,10 @@ mod tests {
         let mut s = initial_state.clone();
 
         s.cells[0] = 255;
-        Node::Instruction('+').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(5).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
-        assert_eq!(s.cells[0], 0);
+        assert_eq!(s.cells[0], 4);
     }
 
     #[test]
@@ -317,7 +423,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('-').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 0);
@@ -330,10 +436,10 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('-').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(5).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
-        assert_eq!(s.cells[0], 255);
+        assert_eq!(s.cells[0], 251);
     }
 
     #[test]
@@ -343,7 +449,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction(',').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::In.execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 'b' as u8);
@@ -356,7 +462,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS] };
         let mut s = initial_state.clone();
 
-        Node::Instruction('.').execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Out.execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(stdout.len(), 1);
@@ -418,12 +524,12 @@ mod tests {
         let result = parse_code(&mut code.as_bytes());
 
         assert_eq!(result, Ok(vec!(
-            Node::Instruction('<'),
-            Node::Instruction('>'),
-            Node::Instruction('+'),
-            Node::Instruction('-'),
-            Node::Instruction('.'),
-            Node::Instruction(',')
+            Node::Left(1),
+            Node::Right(1),
+            Node::Inc(1),
+            Node::Dec(1),
+            Node::Out,
+            Node::In
         )));
     }
 
@@ -444,8 +550,8 @@ mod tests {
 
         assert_eq!(result, Ok(vec!(
             Node::Conditional(vec!(
-                Node::Instruction('<'),
-                Node::Instruction('>')
+                Node::Left(1),
+                Node::Right(1)
             ))
         )));
     }
@@ -457,9 +563,9 @@ mod tests {
 
         assert_eq!(result, Ok(vec!(
             Node::Conditional(vec!(
-                Node::Instruction('<'),
+                Node::Left(1),
                 Node::Conditional(vec!(
-                    Node::Instruction('>')
+                    Node::Right(1)
                 ))
             ))
         )));
@@ -479,5 +585,90 @@ mod tests {
         let result = parse_code(&mut code.as_bytes());
 
         assert_eq!(result, Err(ParserError::MissingDelimiter));
+    }
+
+    #[test]
+    fn it_should_optimize_away_comments() {
+        let code = vec!(
+            Node::Comment('a'),
+            Node::Right(1),
+            Node::Comment('b'),
+            Node::Conditional(vec!(
+                Node::Comment('a'),
+                Node::Right(1),
+                Node::Conditional(vec!(
+                    Node::Comment('a'),
+                    Node::Right(1),
+                ))
+            ))
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Right(1),
+            Node::Conditional(vec!(
+                Node::Right(1),
+                Node::Conditional(vec!(
+                    Node::Right(1),
+                ))
+            ))
+        ));
+    }
+
+    #[test]
+    fn it_should_optimize_away_repeated_operators() {
+        let code = vec!(
+            Node::Right(1),
+            Node::Comment('a'),
+            Node::Right(1),
+            Node::Right(1),
+            Node::Left(1),
+            Node::Left(1),
+            Node::Right(1),
+            Node::Conditional(vec!(
+                Node::Inc(1),
+                Node::Comment('a'),
+                Node::Inc(1),
+                Node::Conditional(vec!(
+                    Node::Comment('a'),
+                    Node::Right(1),
+                    Node::Dec(1),
+                    Node::Right(1),
+                    Node::Dec(1),
+                    Node::Dec(1),
+                ))
+            ))
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Right(3),
+            Node::Left(2),
+            Node::Right(1),
+            Node::Conditional(vec!(
+                Node::Inc(2),
+                Node::Conditional(vec!(
+                    Node::Right(1),
+                    Node::Dec(1),
+                    Node::Right(1),
+                    Node::Dec(2)
+                ))
+            ))
+        ));
+    }
+
+    #[test]
+    fn it_should_not_optimize_operators_that_would_overflow() {
+        let code = vec!(
+            Node::Right(254),
+            Node::Right(1),
+            Node::Right(1),
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Right(255),
+            Node::Right(1)
+        ));
     }
 }
