@@ -62,6 +62,7 @@ enum Node {
     Left(u8),
     Inc(u8),
     Dec(u8),
+    Assign(u8),
     Out,
     In,
     Conditional(Vec<Node>),
@@ -137,6 +138,10 @@ impl Node {
             Node::Dec(i) => {
                 let v = s.cells[s.pos as usize];
                 s.cells[s.pos as usize] = v.wrapping_sub(*i);
+                Ok(())
+            },
+            Node::Assign(i) => {
+                s.cells[s.pos as usize] = *i;
                 Ok(())
             },
             Node::Out => {
@@ -261,14 +266,31 @@ fn join_repeated_operators(code_without_comments: &Vec<Node>) -> Vec<Node> {
     })
 }
 
+fn replace_zero_loops(code_without_comments: &Vec<Node>) -> Vec<Node> {
+    return code_without_comments
+        .into_iter()
+        .map(|n| match n {
+            Node::Conditional(body) => {
+                if *body == vec!(Node::Dec(1)) {
+                    Node::Assign(0)
+                } else {
+                    Node::Conditional(body.clone())
+                }
+            },
+            n => n.clone()
+        })
+        .collect()
+}
+
 fn optimize_code(code: &Vec<Node>) -> Vec<Node> {
     let without_comments: Vec<Node> = code
         .into_iter()
         .flat_map(filter_comments)
         .collect();
     let joined_operators = join_repeated_operators(&without_comments);
+    let without_zero_loops = replace_zero_loops(&joined_operators);
 
-    joined_operators
+    without_zero_loops
 }
 
 fn run_code<F: BufRead, R: Read, W: Write>(code: &mut F, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), ExecutionError> {
@@ -440,6 +462,19 @@ mod tests {
 
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 251);
+    }
+
+    #[test]
+    fn it_should_assign_cells() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::Assign(5).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.cells[1..], initial_state.cells[1..]);
+        assert_eq!(s.cells[0], 5);
     }
 
     #[test]
@@ -669,6 +704,18 @@ mod tests {
         assert_eq!(result, vec!(
             Node::Right(255),
             Node::Right(1)
+        ));
+    }
+
+    #[test]
+    fn it_should_optimize_zero_loops() {
+        let code = vec!(
+            Node::Conditional(vec!(Node::Dec(1))),
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Assign(0)
         ));
     }
 }
