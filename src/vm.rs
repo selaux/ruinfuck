@@ -19,7 +19,7 @@ impl Default for State {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum RuntimeError {
     WriteError(String),
     ReadError(String)
@@ -66,7 +66,7 @@ impl fmt::Display for State {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Right(u8),
     Left(u8),

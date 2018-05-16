@@ -40,9 +40,9 @@ pub fn parse_code<F: BufRead>(code: &mut F) -> Result<Vec<Node>, ParserError> {
         return Err(ParserError::Internal);
     }
 
-    let res = nested.last().ok_or(ParserError::Internal)?;
+    let res = nested.pop().ok_or(ParserError::Internal)?;
 
-    Ok(res.clone())
+    Ok(res)
 }
 
 #[cfg(test)]
