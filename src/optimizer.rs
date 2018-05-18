@@ -81,7 +81,7 @@ fn replace_zero_loops(code_without_comments: &Vec<Node>) -> Vec<Node> {
                 if *body == vec!(Node::Dec(1)) {
                     Node::Assign(0)
                 } else {
-                    Node::Conditional(body.clone())
+                    Node::Conditional(replace_zero_loops(body))
                 }
             },
             n => n.clone()
@@ -193,11 +193,33 @@ mod tests {
     fn it_should_optimize_zero_loops() {
         let code = vec!(
             Node::Conditional(vec!(Node::Dec(1))),
+            Node::Conditional(vec!(
+                Node::Conditional(vec!(Node::Dec(1)))
+            ))
         );
         let result = optimize_code(&code);
 
         assert_eq!(result, vec!(
-            Node::Assign(0)
+            Node::Assign(0),
+            Node::Conditional(vec!(
+                Node::Assign(0),
+            ))
+        ));
+    }
+
+    #[test]
+    fn it_should_optimize_offset_assignments() {
+        let code = vec!(
+            Node::Conditional(vec!(
+                Node::Conditional(vec!(Node::Dec(1)))
+            ))
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Conditional(vec!(
+                Node::Assign(0),
+            ))
         ));
     }
 }
