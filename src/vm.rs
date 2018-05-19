@@ -70,9 +70,10 @@ impl fmt::Display for State {
 pub enum Node {
     Right(u8),
     Left(u8),
-    // value, offset, move_pointer
+    // value, (offset_to), offset, move_pointer
     Inc(u8, i32, bool),
     Dec(u8, i32, bool),
+    Mul(i16, i32, i32, bool),
     Assign(u8, i32, bool),
     Out(i32, bool),
     In(i32, bool),
@@ -133,6 +134,22 @@ impl Node {
                 }
                 Ok(())
             },
+            Node::Mul(mul_value, into, offset, move_pointer) => {
+                let pos = offset_index(s.pos, offset);
+                let into_pos = offset_index(pos as u16, into);
+                let v = s.cells[pos];
+                let abs = mul_value.abs() as u8;
+
+                if *mul_value >= 0 {
+                    s.cells[into_pos] = s.cells[into_pos].wrapping_add(v.wrapping_mul(abs));
+                } else {
+                    s.cells[into_pos] = s.cells[into_pos].wrapping_sub(v.wrapping_mul(abs));
+                }
+                if *move_pointer {
+                    s.pos = pos as u16;
+                }
+                Ok(())
+            },
             Node::Assign(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset) as usize;
                 s.cells[pos] = *i;
@@ -162,7 +179,7 @@ impl Node {
 
                 Ok(())
             },
-            _ => Ok(())
+            Node::Comment(_) => Ok(())
         }
     }
 }
@@ -252,7 +269,7 @@ mod tests {
         assert_eq!(s.cells[1], 1);
     }
 
-        #[test]
+    #[test]
     fn it_should_increment_cells_at_offset_and_move_pointer() {
         let stdin = vec!();
         let mut stdout = vec!();
@@ -293,6 +310,57 @@ mod tests {
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[0..(NUMBER_OF_CELLS-2) as usize], initial_state.cells[0..(NUMBER_OF_CELLS-2) as usize]);
         assert_eq!(s.cells[(NUMBER_OF_CELLS-1) as usize], 1);
+    }
+
+     #[test]
+    fn it_should_multiply_cells() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let initial_state = State { pos: 1, cells: [2; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::Mul(2, -1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(3, 1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, initial_state.pos);
+        assert_eq!(s.cells[4..], initial_state.cells[4..]);
+        assert_eq!(s.cells[0], 6);
+        assert_eq!(s.cells[1], 2);
+        assert_eq!(s.cells[2], 8);
+    }
+
+    #[test]
+    fn it_should_multiply_cells_at_offset() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let initial_state = State { pos: 0, cells: [2; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::Mul(2, -1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(3, 1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, initial_state.pos);
+        assert_eq!(s.cells[4..], initial_state.cells[4..]);
+        assert_eq!(s.cells[0], 6);
+        assert_eq!(s.cells[1], 2);
+        assert_eq!(s.cells[2], 8);
+    }
+
+    #[test]
+    fn it_should_multiply_cells_at_offset_and_move_pointer() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let initial_state = State { pos: 1, cells: [2; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::Mul(2, -1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(3, 0, 1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 2);
+        assert_eq!(s.cells[4..], initial_state.cells[4..]);
+        assert_eq!(s.cells[0], 6);
+        assert_eq!(s.cells[1], 2);
+        assert_eq!(s.cells[2], 8);
     }
 
     #[test]

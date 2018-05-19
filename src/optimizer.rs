@@ -335,6 +335,7 @@ impl OptimizationStep for DeferMovements {
                     Node::Right(_) |
                     Node::Inc(_, _, _) |
                     Node::Dec(_, _, _) |
+                    Node::Mul(_, _, _, _) |
                     Node::Assign(_, _, _) |
                     Node::In(_, _) |
                     Node::Out(_, _) |
@@ -377,6 +378,12 @@ impl OptimizationStep for DeferMovements {
                                 current_offset += offset;
                             }
                         },
+                        Node::Mul(value, into_offset, offset, move_pointer) => {
+                            memo.push(Node::Mul(value, into_offset, current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
                         Node::In(offset, move_pointer) |
                         Node::Out(offset, move_pointer) => {
                             let new_node = match node {
@@ -415,6 +422,60 @@ impl OptimizationStep for DeferMovements {
     }
 }
 
+struct CollapseSimpleLoops;
+
+impl CollapseSimpleLoops {
+    fn is_collapsible_loop(body: &Vec<Node>) -> bool {
+        let has_only_allowed_elements = body
+            .into_iter()
+            .fold(true, |memo, node| match node {
+                Node::Inc(_, _, false) => memo && true,
+                Node::Dec(_, _, false) => memo && true,
+                _ => false
+            });
+        let contains_iterator = body.into_iter().find(|&x| *x == Node::Dec(1, 0, false)).is_some();
+        body.len() > 0 && has_only_allowed_elements && contains_iterator
+    }
+}
+
+impl OptimizationStep for CollapseSimpleLoops {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        code.into_iter()
+            .map(|node| {
+                match node {
+                    Node::Conditional(body) => {
+                        if Self::is_collapsible_loop(&body) {
+                            let mut moves: Vec<Node> = body.into_iter()
+                                .flat_map(|node| {
+                                    match node {
+                                        Node::Dec(1, 0, false) => None,
+                                        Node::Inc(value, offset, false) => Some(Node::Mul(value as i16, offset, 0, false)),
+                                        Node::Dec(value, offset, false) => Some(Node::Mul(-(value as i16), offset, 0, false)),
+                                        _ => None
+                                    }
+                                })
+                                .collect();
+
+                            moves.push(Node::Assign(0, 0, false));
+
+                            moves
+                        } else {
+                            vec!(Node::Conditional(self.apply(body)))
+                        }
+                    },
+                    n => vec!(n)
+                }
+            })
+            .fold(vec!(), |mut memo, new| {
+                for n in new {
+                    memo.push(n);
+                }
+                memo
+            })
+
+    }
+}
+
 pub fn optimize_code(code: &Vec<Node>, options: &OptimizationOptions) -> Vec<Node> {
     let mut optimizations: Vec<Box<OptimizationStep>> = vec!();
 
@@ -430,7 +491,11 @@ pub fn optimize_code(code: &Vec<Node>, options: &OptimizationOptions) -> Vec<Nod
     }
     if options.collapsed_loops {
         optimizations.push(Box::new(DeferMovements));
-
+        optimizations.push(Box::new(CollapseSimpleLoops));
+        if options.collapsed_offsets {
+            optimizations.push(Box::new(CollapseOffsets));
+        }
+        optimizations.push(Box::new(DeferMovements));
     }
 
     let mut c = code.clone();
@@ -763,6 +828,7 @@ mod tests {
 
             Node::Inc(1, 5, true),
             Node::Inc(1, 5, false),
+            Node::Mul(1, -5, 5, false),
 
             Node::Conditional(vec!(
                 Node::Dec(1, 5, true),
@@ -777,6 +843,7 @@ mod tests {
         assert_eq!(result, vec!(
             Node::Inc(1, 10, false),
             Node::Inc(1, 15, false),
+            Node::Mul(1, -5, 15, false),
             Node::Right(10),
 
             Node::Conditional(vec!(
@@ -786,6 +853,38 @@ mod tests {
 
             Node::Inc(1, -5, false),
             Node::Left(5),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_simple_loops() {
+        let code = vec!(
+            Node::Conditional(vec!(
+                Node::Inc(2, 5, false),
+                Node::Inc(4, -5, false),
+                Node::Dec(4, -5, false),
+                Node::Dec(1, 0, false)
+            )),
+            Node::Conditional(vec!(
+                Node::Conditional(vec!(
+                    Node::Inc(2, 5, false),
+                    Node::Dec(1, 0, false),
+                    Node::Inc(4, -5, false)
+                ))
+            )),
+        );
+        let result = optimize_code(&code, &OptimizationOptions::default());
+
+        assert_eq!(result, vec!(
+            Node::Mul(2, 5, 0, false),
+            Node::Mul(4, -5, 0, false),
+            Node::Mul(-4, -5, 0, false),
+            Node::Assign(0, 0, false),
+            Node::Conditional(vec!(
+                Node::Mul(2, 5, 0, false),
+                Node::Mul(4, -5, 0, false),
+                Node::Assign(0, 0, false),
+            )),
         ));
     }
 }

@@ -48,6 +48,7 @@ impl Analyzer for SimpleAnalyzer {
                     Node::Right(_) => memo.nodes.entry(Node::Right(0)),
                     Node::Inc(_, _, _) => memo.nodes.entry(Node::Inc(0, 0, false)),
                     Node::Dec(_, _, _) => memo.nodes.entry(Node::Dec(0, 0, false)),
+                    Node::Mul(_, _, _, _) => memo.nodes.entry(Node::Mul(0, 0, 0, false)),
                     Node::Assign(_, _, _) => memo.nodes.entry(Node::Assign(0, 0, false)),
                     Node::Out(_, _) => memo.nodes.entry(Node::Out(0, false)),
                     Node::In(_, _) => memo.nodes.entry(Node::Out(0, false)),
