@@ -1,94 +1,110 @@
 use vm::Node;
 
-fn filter_comments(code: Vec<Node>) -> Vec<Node> {
-    code
-        .into_iter()
-        .flat_map(move |n| match n {
-            Node::Comment(_) => None,
-            Node::Conditional(body) => Some(Node::Conditional(filter_comments(body))),
-            n => Some(n)
-        })
-        .collect()
+trait OptimizationStep {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node>;
 }
 
-fn join_repeated_operators(code_without_comments: Vec<Node>) -> Vec<Node> {
-    code_without_comments.into_iter().fold(vec!(), move |mut acc, c| {
-        let last = acc.pop();
+struct FilterComments;
 
-        match (last, c) {
-            (Some(Node::Right(x)), Node::Right(y)) => {
-                if x as u16 + y as u16 > 255 {
-                    acc.push(Node::Right(x));
-                    acc.push(Node::Right(y));
-                } else {
-                    acc.push(Node::Right(x + y));
-                }
-            },
-            (Some(Node::Left(x)), Node::Left(y)) => {
-                if x as u16 + y as u16 > 255 {
-                    acc.push(Node::Left(x));
-                    acc.push(Node::Left(y));
-                } else {
-                    acc.push(Node::Left(x + y));
-                }
-            },
-            (Some(Node::Inc(x)), Node::Inc(y)) => {
-                if x as u16 + y as u16 > 255 {
-                    acc.push(Node::Inc(x));
-                    acc.push(Node::Inc(y));
-                } else {
-                    acc.push(Node::Inc(x + y));
-                }
-            },
-            (Some(Node::Dec(x)), Node::Dec(y)) => {
-                if x as u16 + y as u16 > 255 {
-                    acc.push(Node::Dec(x));
-                    acc.push(Node::Dec(y));
-                } else {
-                    acc.push(Node::Dec(x + y));
-                }
-            },
-            (l, Node::Conditional(body)) => {
-                match l {
-                    Some(c) => acc.push(c),
-                    None => {}
-                }
-
-                acc.push(Node::Conditional(join_repeated_operators(body)));
-            },
-            (l, c) => {
-                match l {
-                    Some(c) => acc.push(c),
-                    None => {}
-                }
-                acc.push(c);
-            }
-        };
-
-        acc
-    })
+impl OptimizationStep for FilterComments {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        code
+            .into_iter()
+            .flat_map(move |n| match n {
+                Node::Comment(_) => None,
+                Node::Conditional(body) => Some(Node::Conditional(self.apply(body))),
+                n => Some(n)
+            })
+            .collect()
+    }
 }
 
-fn replace_zero_loops(code_without_comments: Vec<Node>) -> Vec<Node> {
-    return code_without_comments
-        .into_iter()
-        .map(move |n| match n {
-            Node::Conditional(body) => {
-                if body == vec!(Node::Dec(1)) {
-                    Node::Assign(0)
-                } else {
-                    Node::Conditional(replace_zero_loops(body))
+struct MergeRepeatedOperators;
+
+impl OptimizationStep for MergeRepeatedOperators {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        code.into_iter().fold(vec!(), move |mut acc, c| {
+            let last = acc.pop();
+
+            match (last, c) {
+                (Some(Node::Right(x)), Node::Right(y)) => {
+                    if x as u16 + y as u16 > 255 {
+                        acc.push(Node::Right(x));
+                        acc.push(Node::Right(y));
+                    } else {
+                        acc.push(Node::Right(x + y));
+                    }
+                },
+                (Some(Node::Left(x)), Node::Left(y)) => {
+                    if x as u16 + y as u16 > 255 {
+                        acc.push(Node::Left(x));
+                        acc.push(Node::Left(y));
+                    } else {
+                        acc.push(Node::Left(x + y));
+                    }
+                },
+                (Some(Node::Inc(x)), Node::Inc(y)) => {
+                    if x as u16 + y as u16 > 255 {
+                        acc.push(Node::Inc(x));
+                        acc.push(Node::Inc(y));
+                    } else {
+                        acc.push(Node::Inc(x + y));
+                    }
+                },
+                (Some(Node::Dec(x)), Node::Dec(y)) => {
+                    if x as u16 + y as u16 > 255 {
+                        acc.push(Node::Dec(x));
+                        acc.push(Node::Dec(y));
+                    } else {
+                        acc.push(Node::Dec(x + y));
+                    }
+                },
+                (l, Node::Conditional(body)) => {
+                    match l {
+                        Some(c) => acc.push(c),
+                        None => {}
+                    }
+
+                    acc.push(Node::Conditional(self.apply(body)));
+                },
+                (l, c) => {
+                    match l {
+                        Some(c) => acc.push(c),
+                        None => {}
+                    }
+                    acc.push(c);
                 }
-            },
-            n => n
+            };
+
+            acc
         })
-        .collect()
+    }
+}
+
+struct ReplaceZeroAssignments;
+
+impl OptimizationStep for ReplaceZeroAssignments {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        code
+            .into_iter()
+            .map(move |n| match n {
+                Node::Conditional(body) => {
+                    if body == vec!(Node::Dec(1)) {
+                        Node::Assign(0)
+                    } else {
+                        Node::Conditional(self.apply(body))
+                    }
+                },
+                n => n
+            })
+            .collect()
+    }
 }
 
 pub fn optimize_code(code: &Vec<Node>) -> Vec<Node> {
-    let without_comments: Vec<Node> = filter_comments(code.clone());
-    let joined_operators = join_repeated_operators(without_comments);
-    let without_zero_loops = replace_zero_loops(joined_operators);
+    let without_comments: Vec<Node> = FilterComments.apply(code.clone());
+    let joined_operators = MergeRepeatedOperators.apply(without_comments);
+    let without_zero_loops = ReplaceZeroAssignments.apply(joined_operators);
 
     without_zero_loops
 }
