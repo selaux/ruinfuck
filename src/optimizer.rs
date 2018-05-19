@@ -1,4 +1,23 @@
+use std::default::Default;
 use vm::Node;
+
+pub struct OptimizationOptions {
+    collapsed_operators: bool,
+    collapsed_assignments: bool,
+    collapsed_offsets: bool,
+    collapsed_loops: bool
+}
+
+impl Default for OptimizationOptions {
+    fn default() -> Self {
+        return OptimizationOptions {
+            collapsed_operators: true,
+            collapsed_assignments: true,
+            collapsed_offsets: true,
+            collapsed_loops: true
+        };
+    }
+}
 
 trait OptimizationStep {
     fn apply(&self, code: Vec<Node>) -> Vec<Node>;
@@ -298,13 +317,126 @@ impl OptimizationStep for CollapseOffsets {
     }
 }
 
-pub fn optimize_code(code: &Vec<Node>) -> Vec<Node> {
-    let without_comments: Vec<Node> = FilterComments.apply(code.clone());
-    let joined_operators = MergeRepeatedOperators.apply(without_comments);
-    let without_zero_loops = CollapseAssignments.apply(joined_operators);
-    let with_offsets = CollapseOffsets.apply(without_zero_loops);
+struct DeferMovements;
 
-    with_offsets
+impl OptimizationStep for DeferMovements {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        let (mut memo, rest) = code
+            .into_iter()
+            .fold((vec!(), vec!()), move |memo, new_node| {
+                let (mut memo, mut current_block) = memo;
+
+                match new_node {
+                    Node::Left(_) |
+                    Node::Right(_) |
+                    Node::Inc(_, _, _) |
+                    Node::Dec(_, _, _) |
+                    Node::Assign(_, _, _) |
+                    Node::In(_, _) |
+                    Node::Out(_, _) |
+                    Node::Comment(_) => {
+                        current_block.push(new_node);
+                    },
+                    Node::Conditional(body) => {
+                        memo.push(current_block);
+                        memo.push(vec!(Node::Conditional(self.apply(body))));
+                        current_block = vec!();
+                    }
+                }
+                (memo, current_block)
+            });
+
+        memo.push(rest);
+
+        memo.into_iter().fold(vec!(), move |mut memo, group| {
+            if group.len() == 1 {
+                memo.push(group.first().unwrap().clone());
+            } else {
+                let mut current_offset: i32 = 0;
+
+                for node in group {
+                    match node {
+                        Node::Left(v) => current_offset -= v as i32,
+                        Node::Right(v) => current_offset += v as i32,
+                        Node::Dec(v, offset, move_pointer) => {
+                            memo.push(Node::Dec(v, current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
+                        Node::Inc(v, offset, move_pointer) => {
+                            memo.push(Node::Inc(v, current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
+                        Node::Assign(v, offset, move_pointer) => {
+                            memo.push(Node::Assign(v, current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
+                        Node::In(offset, move_pointer) => {
+                            memo.push(Node::In(current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
+                        Node::Out(offset, move_pointer) => {
+                            memo.push(Node::Out(current_offset + offset, false));
+                            if move_pointer {
+                                current_offset += offset;
+                            }
+                        },
+                        Node::Comment(_) => {},
+                        Node::Conditional(_) => {}
+                    }
+                }
+
+                if current_offset > 0 {
+                    while current_offset > 255 {
+                        memo.push(Node::Right(255));
+                        current_offset -= 255;
+                    }
+                    memo.push(Node::Right(current_offset as u8));
+                } else if current_offset < 0 {
+                    while current_offset < -255 {
+                        memo.push(Node::Left(255));
+                        current_offset += 255;
+                    }
+                    memo.push(Node::Left((-current_offset) as u8));
+                }
+            }
+
+            memo
+        })
+    }
+}
+
+pub fn optimize_code(code: &Vec<Node>, options: &OptimizationOptions) -> Vec<Node> {
+    let mut optimizations: Vec<Box<OptimizationStep>> = vec!();
+
+    optimizations.push(Box::new(FilterComments));
+    if options.collapsed_operators {
+        optimizations.push(Box::new(MergeRepeatedOperators));
+    }
+    if options.collapsed_assignments {
+        optimizations.push(Box::new(CollapseAssignments));
+    }
+    if options.collapsed_offsets {
+        optimizations.push(Box::new(CollapseOffsets));
+    }
+    if options.collapsed_loops {
+        optimizations.push(Box::new(DeferMovements));
+
+    }
+
+    let mut c = code.clone();
+    for o in optimizations {
+        c = o.apply(c);
+    }
+
+    c
 }
 
 #[cfg(test)]
@@ -326,7 +458,7 @@ mod tests {
                 ))
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Right(1),
@@ -363,7 +495,12 @@ mod tests {
                 ))
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_operators: true,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: false
+        });
 
         assert_eq!(result, vec!(
             Node::Right(3),
@@ -388,7 +525,7 @@ mod tests {
             Node::Right(1),
             Node::Right(1),
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Right(255),
@@ -406,7 +543,7 @@ mod tests {
             Node::Assign(1, 0, false),
             Node::Assign(1, 1, false),
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Inc(1, 0, false),
@@ -426,7 +563,7 @@ mod tests {
                 Node::Conditional(vec!(Node::Dec(1, 0, false)))
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Assign(0, 0, false),
@@ -448,7 +585,7 @@ mod tests {
                 Node::Inc(100, 0, false),
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Assign(100, 0, false),
@@ -481,7 +618,12 @@ mod tests {
                 Node::Assign(1, 0, false),
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
 
         assert_eq!(result, vec!(
             Node::Inc(1, 5, true),
@@ -519,7 +661,12 @@ mod tests {
                 Node::Assign(1, 0, false),
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
 
         assert_eq!(result, vec!(
             Node::Inc(1, -5, true),
@@ -565,7 +712,7 @@ mod tests {
                 Node::Left(5),
             ))
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
             Node::Inc(1, -5, false),
@@ -591,13 +738,52 @@ mod tests {
             Node::Inc(1, 0, false),
             Node::Right(7)
         );
-        let result = optimize_code(&code);
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
 
         assert_eq!(result, vec!(
             Node::Left(2),
             Node::Inc(1, -5, false),
             Node::Inc(1, -5, false),
             Node::Right(2)
+        ));
+    }
+
+    #[test]
+    fn it_should_defer_movement() {
+        let code = vec!(
+            Node::Left(1),
+            Node::Right(6),
+
+            Node::Inc(1, 5, true),
+            Node::Inc(1, 5, false),
+
+            Node::Conditional(vec!(
+                Node::Dec(1, 5, true),
+                Node::Out(-5, true)
+            )),
+
+            Node::Left(10),
+            Node::Inc(1, 5, true),
+        );
+        let result = optimize_code(&code, &OptimizationOptions::default());
+
+        assert_eq!(result, vec!(
+            Node::Inc(1, 10, false),
+            Node::Inc(1, 15, false),
+            Node::Right(10),
+
+            Node::Conditional(vec!(
+                Node::Dec(1, 5, false),
+                Node::Out(0, false)
+            )),
+
+            Node::Inc(1, -5, false),
+            Node::Left(5),
         ));
     }
 }

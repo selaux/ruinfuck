@@ -23,10 +23,11 @@ enum ExecutionError {
 
 fn run_code<F: BufRead, R: Read, W: Write>(code: &mut F, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), ExecutionError> {
     let parsed = parser::parse_code(code).map_err(ExecutionError::Parse)?;
-    let optimized = optimizer::optimize_code(&parsed);
+    let optimized = optimizer::optimize_code(&parsed, &optimizer::OptimizationOptions::default());
 
     println!("Unoptimized: {:?}", (analyzer::SimpleAnalyzer {}).analyze(&parsed));
     println!("Optimized: {:?}", (analyzer::SimpleAnalyzer {}).analyze(&optimized));
+    // println!("Code: {:?}", optimized);
 
     return vm::run_block(stdin, stdout, &optimized, s).map_err(ExecutionError::Run);
 }
