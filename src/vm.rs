@@ -75,6 +75,7 @@ pub enum Node {
     Dec(u8, i32, bool),
     Mul(i16, i32, i32, bool),
     Assign(u8, i32, bool),
+    Scan(i32),
     Out(i32, bool),
     In(i32, bool),
     Conditional(Vec<Node>),
@@ -156,6 +157,14 @@ impl Node {
                 if *move_pointer {
                     s.pos = pos as u16;
                 }
+                Ok(())
+            },
+            Node::Scan(interval) => {
+                let mut pos = s.pos as usize;
+                while s.cells[pos] != 0 {
+                    pos = offset_index(pos as u16, interval);
+                }
+                s.pos = pos as u16;
                 Ok(())
             },
             Node::Out(offset, move_pointer) => {
@@ -627,6 +636,68 @@ mod tests {
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(stdout.len(), 1);
         assert_eq!(stdout.get(0), Some(&('b' as u8)));
+    }
+
+    #[test]
+    fn it_should_scan_left() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 21, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[10] = 0;
+
+        let mut s = initial_state.clone();
+
+        Node::Scan(-1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 10);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
+    }
+
+    #[test]
+    fn it_should_scan_left_with_interval() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 10, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[9] = 0;
+        initial_state.cells[8] = 0;
+
+        let mut s = initial_state.clone();
+
+        Node::Scan(-2).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 8);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
+    }
+
+    #[test]
+    fn it_should_scan_right() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 0, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[9] = 0;
+
+        let mut s = initial_state.clone();
+
+        Node::Scan(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 9);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
+    }
+
+    #[test]
+    fn it_should_scan_right_with_interval() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 0, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[1] = 0;
+        initial_state.cells[2] = 0;
+
+        let mut s = initial_state.clone();
+
+        Node::Scan(2).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 2);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
     }
 
     #[test]

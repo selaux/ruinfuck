@@ -5,7 +5,8 @@ pub struct OptimizationOptions {
     collapsed_operators: bool,
     collapsed_assignments: bool,
     collapsed_offsets: bool,
-    collapsed_loops: bool
+    collapsed_loops: bool,
+    collapsed_scan_loops: bool
 }
 
 impl Default for OptimizationOptions {
@@ -14,7 +15,8 @@ impl Default for OptimizationOptions {
             collapsed_operators: true,
             collapsed_assignments: true,
             collapsed_offsets: true,
-            collapsed_loops: true
+            collapsed_loops: true,
+            collapsed_scan_loops: true
         };
     }
 }
@@ -342,6 +344,11 @@ impl OptimizationStep for DeferMovements {
                     Node::Comment(_) => {
                         current_block.push(new_node);
                     },
+                    Node::Scan(i) => {
+                        memo.push(current_block);
+                        memo.push(vec!(Node::Scan(i)));
+                        current_block = vec!();
+                    },
                     Node::Conditional(body) => {
                         memo.push(current_block);
                         memo.push(vec!(Node::Conditional(self.apply(body))));
@@ -398,7 +405,8 @@ impl OptimizationStep for DeferMovements {
                             }
                         },
                         Node::Comment(_) => {},
-                        Node::Conditional(_) => {}
+                        Node::Conditional(_) => {},
+                        Node::Scan(_) => {}
                     }
                 }
 
@@ -476,6 +484,23 @@ impl OptimizationStep for CollapseSimpleLoops {
     }
 }
 
+struct CollapseScanLoops;
+
+impl OptimizationStep for CollapseScanLoops {
+    fn apply(&self, code: Vec<Node>) -> Vec<Node> {
+        code.into_iter()
+            .map(|n| match n {
+                Node::Conditional(body) => match body.as_slice() {
+                    [Node::Left(i)] => Node::Scan(-(*i as i32)),
+                    [Node::Right(i)] => Node::Scan(*i as i32),
+                    body => Node::Conditional(self.apply(body.to_vec()))
+                },
+                c => c
+            })
+            .collect()
+    }
+}
+
 pub fn optimize_code(code: &Vec<Node>, options: &OptimizationOptions) -> Vec<Node> {
     let mut optimizations: Vec<Box<OptimizationStep>> = vec!();
 
@@ -496,6 +521,9 @@ pub fn optimize_code(code: &Vec<Node>, options: &OptimizationOptions) -> Vec<Nod
             optimizations.push(Box::new(CollapseOffsets));
         }
         optimizations.push(Box::new(DeferMovements));
+    }
+    if options.collapsed_scan_loops {
+        optimizations.push(Box::new(CollapseScanLoops));
     }
 
     let mut c = code.clone();
@@ -521,7 +549,7 @@ mod tests {
                 Node::Right(1),
                 Node::Conditional(vec!(
                     Node::Comment('a'),
-                    Node::Right(1),
+                    Node::Inc(1, 0, false),
                 ))
             ))
         );
@@ -532,7 +560,7 @@ mod tests {
             Node::Conditional(vec!(
                 Node::Right(1),
                 Node::Conditional(vec!(
-                    Node::Right(1),
+                    Node::Inc(1, 0, false),
                 ))
             ))
         ));
@@ -563,6 +591,7 @@ mod tests {
             ))
         );
         let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
             collapsed_operators: true,
             collapsed_loops: false,
             collapsed_assignments: false,
@@ -686,6 +715,7 @@ mod tests {
             ))
         );
         let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
             collapsed_operators: false,
             collapsed_loops: false,
             collapsed_assignments: false,
@@ -729,6 +759,7 @@ mod tests {
             ))
         );
         let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
             collapsed_operators: false,
             collapsed_loops: false,
             collapsed_assignments: false,
@@ -806,6 +837,7 @@ mod tests {
             Node::Right(7)
         );
         let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
             collapsed_operators: false,
             collapsed_loops: false,
             collapsed_assignments: false,
@@ -884,6 +916,36 @@ mod tests {
                 Node::Mul(2, 5, 0, false),
                 Node::Mul(4, -5, 0, false),
                 Node::Assign(0, 0, false),
+            )),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_scan_loops() {
+        let code = vec!(
+            Node::Conditional(vec!(
+                Node::Left(1)
+            )),
+            Node::Conditional(vec!(
+                Node::Right(3)
+            )),
+            Node::Conditional(vec!(
+                Node::Conditional(vec!(
+                    Node::Left(1)
+                )),
+                Node::Conditional(vec!(
+                    Node::Right(3)
+                )),
+            )),
+        );
+        let result = optimize_code(&code, &OptimizationOptions::default());
+
+        assert_eq!(result, vec!(
+            Node::Scan(-1),
+            Node::Scan(3),
+            Node::Conditional(vec!(
+                Node::Scan(-1),
+                Node::Scan(3),
             )),
         ));
     }
