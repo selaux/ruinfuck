@@ -57,10 +57,10 @@ mod tests {
         assert_eq!(result, Ok(vec!(
             Node::Left(1),
             Node::Right(1),
-            Node::Inc(1),
-            Node::Dec(1),
-            Node::Out,
-            Node::In
+            Node::Inc(1, 0),
+            Node::Dec(1, 0),
+            Node::Out(0),
+            Node::In(0)
         )));
     }
 
