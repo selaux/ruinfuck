@@ -42,58 +42,52 @@ struct MergeRepeatedOperators;
 
 impl OptimizationStep for MergeRepeatedOperators {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
-        code.into_iter().fold(vec!(), move |mut acc, c| {
+        code.into_iter().fold(vec!(), move |mut acc, node| {
             let last = acc.pop();
 
-            match (last, c) {
+            let merged = match (&last, &node) {
                 (Some(Node::Right(x)), Node::Right(y)) => {
-                    if x as u16 + y as u16 > 255 {
-                        acc.push(Node::Right(x));
-                        acc.push(Node::Right(y));
+                    if *x as u16 + *y as u16 > 255 {
+                        None
                     } else {
-                        acc.push(Node::Right(x + y));
+                        Some(Node::Right(x + y))
                     }
                 },
                 (Some(Node::Left(x)), Node::Left(y)) => {
-                    if x as u16 + y as u16 > 255 {
-                        acc.push(Node::Left(x));
-                        acc.push(Node::Left(y));
+                    if *x as u16 + *y as u16 > 255 {
+                        None
                     } else {
-                        acc.push(Node::Left(x + y));
+                        Some(Node::Left(x + y))
                     }
                 },
                 (Some(Node::Inc(x, offset1, false)), Node::Inc(y, offset2, false)) => {
-                    if x as u16 + y as u16 > 255 || offset1 != offset2 {
-                        acc.push(Node::Inc(x, offset1, false));
-                        acc.push(Node::Inc(y, offset2, false));
+                    if *x as u16 + *y as u16 > 255 || offset1 != offset2 {
+                        None
                     } else {
-                        acc.push(Node::Inc(x + y, offset1, false));
+                        Some(Node::Inc(x + y, *offset1, false))
                     }
                 },
                 (Some(Node::Dec(x, offset1, false)), Node::Dec(y, offset2, false)) => {
-                    if x as u16 + y as u16 > 255 || offset1 != offset2 {
-                        acc.push(Node::Dec(x, offset1, false));
-                        acc.push(Node::Dec(y, offset2, false));
+                    if *x as u16 + *y as u16 > 255 || offset1 != offset2 {
+                        None
                     } else {
-                        acc.push(Node::Dec(x + y, offset1, false));
+                        Some(Node::Dec(x + y, *offset1, false))
                     }
                 },
-                (l, Node::Conditional(body)) => {
-                    match l {
-                        Some(c) => acc.push(c),
-                        None => {}
-                    }
-
-                    acc.push(Node::Conditional(self.apply(body)));
-                },
-                (l, c) => {
-                    match l {
-                        Some(c) => acc.push(c),
-                        None => {}
-                    }
-                    acc.push(c);
-                }
+                _ => None
             };
+
+            if let Some(n) = merged {
+                acc.push(n);
+            } else {
+                if let Some(l) = last {
+                    acc.push(l);
+                }
+                match node {
+                    Node::Conditional(body) => acc.push(Node::Conditional(self.apply(body))),
+                    n => acc.push(n)
+                };
+            }
 
             acc
         })
@@ -118,25 +112,27 @@ impl OptimizationStep for CollapseAssignments {
             })
             .fold(vec!(), move |mut acc, c| {
                 let last = acc.pop();
-                let mut handled = false;
-
-                match (&last, &c) {
+                let value = match (&last, &c) {
                     (Some(Node::Assign(0, offset1, false)), Node::Inc(inc_val, offset2, false)) => {
                         if offset1 == offset2 {
-                            acc.push(Node::Assign(*inc_val, *offset1, false));
-                            handled = true;
+                            Some(Node::Assign(*inc_val, *offset1, false))
+                        } else {
+                            None
                         }
                     },
                     (Some(Node::Assign(0, offset1, false)), Node::Dec(dec_val, offset2, false)) => {
                         if offset1 == offset2 {
-                            acc.push(Node::Assign(0u8.wrapping_sub(*dec_val), *offset1, false));
-                            handled = true;
+                            Some(Node::Assign(0u8.wrapping_sub(*dec_val), *offset1, false))
+                        } else {
+                            None
                         }
                     },
-                    _ => {}
+                    _ => None
                 };
 
-                if !handled {
+                if let Some(v) = value {
+                    acc.push(v);
+                } else {
                     if let Some(last) = last {
                         acc.push(last);
                     }
@@ -158,32 +154,25 @@ impl OptimizationStep for CollapseOffsets {
                 Node::Conditional(body) => Node::Conditional(self.apply(body)),
                 n => n
             };
-
-            match last {
+            let modified = match &last {
                 Some(Node::Right(offset)) => {
                     match new_node {
-                        Node::Inc(v, 0, false) => acc.push(Node::Inc(v, offset as i32, true)),
-                        Node::Dec(v, 0, false) => acc.push(Node::Dec(v, offset as i32, true)),
-                        Node::Assign(v, 0, false) => acc.push(Node::Assign(v, offset as i32, true)),
-                        Node::Out(0, false) => acc.push(Node::Out(offset as i32, true)),
-                        Node::In(0, false) => acc.push(Node::In(offset as i32, true)),
-                        n => {
-                            acc.push(last.unwrap());
-                            acc.push(n);
-                        }
+                        Node::Inc(v, 0, false) => Some(vec!(Node::Inc(v, *offset as i32, true))),
+                        Node::Dec(v, 0, false) => Some(vec!(Node::Dec(v, *offset as i32, true))),
+                        Node::Assign(v, 0, false) => Some(vec!(Node::Assign(v, *offset as i32, true))),
+                        Node::Out(0, false) => Some(vec!(Node::Out(*offset as i32, true))),
+                        Node::In(0, false) => Some(vec!(Node::In(*offset as i32, true))),
+                        _ => None
                     }
                 },
                 Some(Node::Left(offset)) => {
                     match new_node {
-                        Node::Inc(v, 0, false) => acc.push(Node::Inc(v, -(offset as i32), true)),
-                        Node::Dec(v, 0, false) => acc.push(Node::Dec(v, -(offset as i32), true)),
-                        Node::Assign(v, 0, false) => acc.push(Node::Assign(v, -(offset as i32), true)),
-                        Node::Out(0, false) => acc.push(Node::Out(-(offset as i32), true)),
-                        Node::In(0, false) => acc.push(Node::In(-(offset as i32), true)),
-                        n => {
-                            acc.push(last.unwrap());
-                            acc.push(n);
-                        }
+                        Node::Inc(v, 0, false) => Some(vec!(Node::Inc(v, -(*offset as i32), true))),
+                        Node::Dec(v, 0, false) => Some(vec!(Node::Dec(v, -(*offset as i32), true))),
+                        Node::Assign(v, 0, false) => Some(vec!(Node::Assign(v, -(*offset as i32), true))),
+                        Node::Out(0, false) => Some(vec!(Node::Out(-(*offset as i32), true))),
+                        Node::In(0, false) => Some(vec!(Node::In(-(*offset as i32), true))),
+                        _ => None
                     }
                 },
                 Some(old_node) => {
@@ -193,7 +182,7 @@ impl OptimizationStep for CollapseOffsets {
                                 Node::Inc(value, offset, true) |
                                 Node::Dec(value, offset, true) |
                                 Node::Assign(value, offset, true) => {
-                                    if offset < 0 {
+                                    if *offset < 0 {
                                         let diff = offset.abs() - right as i32;
                                         let build_node = match old_node {
                                             Node::Inc(_, _, _) => Node::Inc,
@@ -203,22 +192,25 @@ impl OptimizationStep for CollapseOffsets {
                                         };
 
                                         if diff > 0 {
-                                            acc.push(Node::Left(diff as u8));
-                                            acc.push(build_node(value, -(right as i32), false));
+                                            Some(vec!(
+                                                Node::Left(diff as u8),
+                                                build_node(*value, -(right as i32), false)
+                                            ))
                                         } else if diff == 0 {
-                                            acc.push(build_node(value, offset, false));
+                                            Some(vec!(build_node(*value, *offset, false)))
                                         } else {
-                                            acc.push(build_node(value, offset, false));
-                                            acc.push(Node::Right(diff.abs() as u8));
+                                            Some(vec!(
+                                                build_node(*value, *offset, false),
+                                                Node::Right(diff.abs() as u8)
+                                            ))
                                         }
                                     } else {
-                                        acc.push(old_node);
-                                        acc.push(new_node);
+                                        None
                                     }
                                 },
                                 Node::In(offset, true) |
                                 Node::Out(offset, true) => {
-                                    if offset < 0 {
+                                    if *offset < 0 {
                                         let diff = offset.abs() - right as i32;
                                         let build_node = match old_node {
                                             Node::In(_, _) => Node::In,
@@ -227,29 +219,31 @@ impl OptimizationStep for CollapseOffsets {
                                         };
 
                                         if diff > 0 {
-                                            acc.push(Node::Left(diff as u8));
-                                            acc.push(build_node(-(right as i32), false));
+                                            Some(vec!(
+                                                Node::Left(diff as u8),
+                                                build_node(-(right as i32), false)
+                                            ))
                                         } else if diff == 0 {
-                                            acc.push(build_node(offset, false));
+                                            Some(vec!(build_node(*offset, false)))
                                         } else {
-                                            acc.push(build_node(offset, false));
-                                            acc.push(Node::Right(diff.abs() as u8));
+                                            Some(vec!(
+                                                build_node(*offset, false),
+                                                Node::Right(diff.abs() as u8)
+                                            ))
                                         }
                                     } else {
-                                        acc.push(old_node);
-                                        acc.push(new_node);
+                                        None
                                     }
                                 },
-                                _ => {
-                                    acc.push(old_node);
-                                    acc.push(new_node);
-                                }
+                                _ => None
                             }
                         },
                         Node::Left(left) => {
                             match old_node {
-                                Node::Inc(value, offset, true) | Node::Dec(value, offset, true) | Node::Assign(value, offset, true) => {
-                                    if offset > 0 {
+                                Node::Inc(value, offset, true) |
+                                Node::Dec(value, offset, true) |
+                                Node::Assign(value, offset, true) => {
+                                    if *offset > 0 {
                                         let diff = offset - left as i32;
                                         let build_node = match old_node {
                                             Node::Inc(_, _, _) => Node::Inc,
@@ -259,21 +253,25 @@ impl OptimizationStep for CollapseOffsets {
                                         };
 
                                         if diff < 0 {
-                                            acc.push(build_node(value, offset, false));
-                                            acc.push(Node::Left((-diff) as u8));
+                                            Some(vec!(
+                                                build_node(*value, *offset, false),
+                                                Node::Left((-diff) as u8)
+                                            ))
                                         } else if diff == 0 {
-                                            acc.push(build_node(value, offset, false));
+                                            Some(vec!(build_node(*value, *offset, false)))
                                         } else {
-                                            acc.push(Node::Right(diff as u8));
-                                            acc.push(build_node(value, left as i32, false));
+                                            Some(vec!(
+                                                Node::Right(diff as u8),
+                                                build_node(*value, left as i32, false)
+                                            ))
                                         }
                                     } else {
-                                        acc.push(old_node);
-                                        acc.push(new_node);
+                                        None
                                     }
                                 },
-                                Node::In(offset, true) | Node::Out(offset, true) => {
-                                    if offset > 0 {
+                                Node::In(offset, true) |
+                                Node::Out(offset, true) => {
+                                    if *offset > 0 {
                                         let diff = offset - left as i32;
                                         let build_node = match old_node {
                                             Node::In(_, _) => Node::In,
@@ -282,34 +280,40 @@ impl OptimizationStep for CollapseOffsets {
                                         };
 
                                         if diff < 0 {
-                                            acc.push(build_node(offset, false));
-                                            acc.push(Node::Left((-diff) as u8));
+                                            Some(vec!(
+                                                build_node(*offset, false),
+                                                Node::Left((-diff) as u8)
+                                            ))
                                         } else if diff == 0 {
-                                            acc.push(build_node(offset, false));
+                                            Some(vec!(build_node(*offset, false)))
                                         } else {
-                                            acc.push(Node::Right(diff as u8));
-                                            acc.push(build_node(left as i32, false));
+                                            Some(vec!(
+                                                Node::Right(diff as u8),
+                                                build_node(left as i32, false)
+                                            ))
                                         }
                                     } else {
-                                        acc.push(old_node);
-                                        acc.push(new_node);
+                                        None
                                     }
                                 },
-                                _ => {
-                                    acc.push(old_node);
-                                    acc.push(new_node);
-                                }
+                                _ => None
                             }
                         },
-                        _ => {
-                            acc.push(old_node);
-                            acc.push(new_node);
-                        }
+                        _ => None
                     }
                 },
-                None => {
-                    acc.push(new_node);
+                None => None
+            };
+
+            if let Some(v) = modified {
+                for n in v {
+                    acc.push(n);
                 }
+            } else {
+                if let Some(n) = last {
+                    acc.push(n);
+                }
+                acc.push(new_node);
             }
 
             acc
@@ -358,32 +362,30 @@ impl OptimizationStep for DeferMovements {
                     match node {
                         Node::Left(v) => current_offset -= v as i32,
                         Node::Right(v) => current_offset += v as i32,
-                        Node::Dec(v, offset, move_pointer) => {
-                            memo.push(Node::Dec(v, current_offset + offset, false));
-                            if move_pointer {
-                                current_offset += offset;
-                            }
-                        },
-                        Node::Inc(v, offset, move_pointer) => {
-                            memo.push(Node::Inc(v, current_offset + offset, false));
-                            if move_pointer {
-                                current_offset += offset;
-                            }
-                        },
+                        Node::Dec(v, offset, move_pointer) |
+                        Node::Inc(v, offset, move_pointer) |
                         Node::Assign(v, offset, move_pointer) => {
-                            memo.push(Node::Assign(v, current_offset + offset, false));
+                            let new_node = match node {
+                                Node::Dec(_, _, _) => Node::Dec,
+                                Node::Inc(_, _, _) => Node::Inc,
+                                Node::Assign(_, _, _) => Node::Assign,
+                                _ => unreachable!()
+                            };
+
+                            memo.push(new_node(v, current_offset + offset, false));
                             if move_pointer {
                                 current_offset += offset;
                             }
                         },
-                        Node::In(offset, move_pointer) => {
-                            memo.push(Node::In(current_offset + offset, false));
-                            if move_pointer {
-                                current_offset += offset;
-                            }
-                        },
+                        Node::In(offset, move_pointer) |
                         Node::Out(offset, move_pointer) => {
-                            memo.push(Node::Out(current_offset + offset, false));
+                            let new_node = match node {
+                                Node::In(_, _) => Node::In,
+                                Node::Out(_, _) => Node::Out,
+                                _ => unreachable!()
+                            };
+
+                            memo.push(new_node(current_offset + offset, false));
                             if move_pointer {
                                 current_offset += offset;
                             }
