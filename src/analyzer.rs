@@ -46,11 +46,11 @@ impl Analyzer for SimpleAnalyzer {
                 let entry = match v {
                     Node::Left(_) => memo.nodes.entry(Node::Left(0)),
                     Node::Right(_) => memo.nodes.entry(Node::Right(0)),
-                    Node::Inc(_, _) => memo.nodes.entry(Node::Inc(0, 0)),
-                    Node::Dec(_, _) => memo.nodes.entry(Node::Dec(0, 0)),
-                    Node::Assign(_, _) => memo.nodes.entry(Node::Assign(0, 0)),
-                    Node::Out(_) => memo.nodes.entry(Node::Out(0)),
-                    Node::In(_) => memo.nodes.entry(Node::In(0)),
+                    Node::Inc(_, _, _) => memo.nodes.entry(Node::Inc(0, 0, false)),
+                    Node::Dec(_, _, _) => memo.nodes.entry(Node::Dec(0, 0, false)),
+                    Node::Assign(_, _, _) => memo.nodes.entry(Node::Assign(0, 0, false)),
+                    Node::Out => memo.nodes.entry(Node::Out),
+                    Node::In => memo.nodes.entry(Node::In),
                     Node::Comment(_) => memo.nodes.entry(Node::Comment(' ')),
                     Node::Conditional(_) => memo.nodes.entry(Node::Conditional(vec!())),
                 };
@@ -99,7 +99,7 @@ mod tests {
             Node::Left(1),
             Node::Left(2),
             Node::Right(1),
-            Node::Inc(1, 1)
+            Node::Inc(1, 1, true)
         );
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
@@ -107,7 +107,7 @@ mod tests {
 
         expected_nodes.insert(Node::Left(0), 2);
         expected_nodes.insert(Node::Right(0), 1);
-        expected_nodes.insert(Node::Inc(0, 0), 1);
+        expected_nodes.insert(Node::Inc(0, 0, false), 1);
 
         assert_eq!(result, AnalysisResults { total: 4, nodes: expected_nodes });
     }

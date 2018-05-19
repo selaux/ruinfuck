@@ -43,20 +43,20 @@ impl OptimizationStep for MergeRepeatedOperators {
                         acc.push(Node::Left(x + y));
                     }
                 },
-                (Some(Node::Inc(x, offset1)), Node::Inc(y, offset2)) => {
+                (Some(Node::Inc(x, offset1, false)), Node::Inc(y, offset2, false)) => {
                     if x as u16 + y as u16 > 255 || offset1 != offset2 {
-                        acc.push(Node::Inc(x, offset1));
-                        acc.push(Node::Inc(y, offset2));
+                        acc.push(Node::Inc(x, offset1, false));
+                        acc.push(Node::Inc(y, offset2, false));
                     } else {
-                        acc.push(Node::Inc(x + y, offset1));
+                        acc.push(Node::Inc(x + y, offset1, false));
                     }
                 },
-                (Some(Node::Dec(x, offset1)), Node::Dec(y, offset2)) => {
+                (Some(Node::Dec(x, offset1, false)), Node::Dec(y, offset2, false)) => {
                     if x as u16 + y as u16 > 255 || offset1 != offset2 {
-                        acc.push(Node::Dec(x, offset1));
-                        acc.push(Node::Dec(y, offset2));
+                        acc.push(Node::Dec(x, offset1, false));
+                        acc.push(Node::Dec(y, offset2, false));
                     } else {
-                        acc.push(Node::Dec(x + y, offset1));
+                        acc.push(Node::Dec(x + y, offset1, false));
                     }
                 },
                 (l, Node::Conditional(body)) => {
@@ -89,8 +89,8 @@ impl OptimizationStep for ReplaceZeroAssignments {
             .into_iter()
             .map(move |n| match n {
                 Node::Conditional(body) => {
-                    if body == vec!(Node::Dec(1, 0)) {
-                        Node::Assign(0, 0)
+                    if body == vec!(Node::Dec(1, 0, false)) {
+                        Node::Assign(0, 0, false)
                     } else {
                         Node::Conditional(self.apply(body))
                     }
@@ -152,16 +152,16 @@ mod tests {
             Node::Left(1),
             Node::Right(1),
             Node::Conditional(vec!(
-                Node::Inc(1, 0),
+                Node::Inc(1, 0, false),
                 Node::Comment('a'),
-                Node::Inc(1, 0),
+                Node::Inc(1, 0, false),
                 Node::Conditional(vec!(
                     Node::Comment('a'),
                     Node::Right(1),
-                    Node::Dec(1, 0),
+                    Node::Dec(1, 0, false),
                     Node::Right(1),
-                    Node::Dec(1, 0),
-                    Node::Dec(1, 0),
+                    Node::Dec(1, 0, false),
+                    Node::Dec(1, 0, false),
                 ))
             ))
         );
@@ -172,12 +172,12 @@ mod tests {
             Node::Left(2),
             Node::Right(1),
             Node::Conditional(vec!(
-                Node::Inc(2, 0),
+                Node::Inc(2, 0, false),
                 Node::Conditional(vec!(
                     Node::Right(1),
-                    Node::Dec(1, 0),
+                    Node::Dec(1, 0, false),
                     Node::Right(1),
-                    Node::Dec(2, 0)
+                    Node::Dec(2, 0, false)
                 ))
             ))
         ));
@@ -201,39 +201,39 @@ mod tests {
     #[test]
     fn it_should_not_optimize_operators_with_different_offsets() {
         let code = vec!(
-            Node::Inc(1, 0),
-            Node::Inc(1, 1),
-            Node::Dec(1, 0),
-            Node::Dec(1, 1),
-            Node::Assign(1, 0),
-            Node::Assign(1, 1),
+            Node::Inc(1, 0, false),
+            Node::Inc(1, 1, false),
+            Node::Dec(1, 0, false),
+            Node::Dec(1, 1, false),
+            Node::Assign(1, 0, false),
+            Node::Assign(1, 1, false),
         );
         let result = optimize_code(&code);
 
         assert_eq!(result, vec!(
-            Node::Inc(1, 0),
-            Node::Inc(1, 1),
-            Node::Dec(1, 0),
-            Node::Dec(1, 1),
-            Node::Assign(1, 0),
-            Node::Assign(1, 1),
+            Node::Inc(1, 0, false),
+            Node::Inc(1, 1, false),
+            Node::Dec(1, 0, false),
+            Node::Dec(1, 1, false),
+            Node::Assign(1, 0, false),
+            Node::Assign(1, 1, false),
         ));
     }
 
     #[test]
     fn it_should_optimize_zero_loops() {
         let code = vec!(
-            Node::Conditional(vec!(Node::Dec(1, 0))),
+            Node::Conditional(vec!(Node::Dec(1, 0, false))),
             Node::Conditional(vec!(
-                Node::Conditional(vec!(Node::Dec(1, 0)))
+                Node::Conditional(vec!(Node::Dec(1, 0, false)))
             ))
         );
         let result = optimize_code(&code);
 
         assert_eq!(result, vec!(
-            Node::Assign(0, 0),
+            Node::Assign(0, 0, false),
             Node::Conditional(vec!(
-                Node::Assign(0, 0),
+                Node::Assign(0, 0, false),
             ))
         ));
     }

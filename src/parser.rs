@@ -2,6 +2,22 @@ use std::io::{Read, BufRead};
 
 use vm::Node;
 
+impl From<char> for Node {
+    fn from(c: char) -> Node {
+        match c {
+            '>' => Node::Right(1),
+            '<' => Node::Left(1),
+            '+' => Node::Inc(1, 0, false),
+            '-' => Node::Dec(1, 0, false),
+            '.' => Node::Out,
+            ',' => Node::In,
+            '[' => unreachable!(),
+            ']' => unreachable!(),
+            c => Node::Comment(c)
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ParserError {
     UnmatchedDelimiter,
@@ -57,10 +73,10 @@ mod tests {
         assert_eq!(result, Ok(vec!(
             Node::Left(1),
             Node::Right(1),
-            Node::Inc(1, 0),
-            Node::Dec(1, 0),
-            Node::Out(0),
-            Node::In(0)
+            Node::Inc(1, 0, false),
+            Node::Dec(1, 0, false),
+            Node::Out,
+            Node::In
         )));
     }
 
