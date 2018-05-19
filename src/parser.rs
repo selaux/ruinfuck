@@ -9,8 +9,8 @@ impl From<char> for Node {
             '<' => Node::Left(1),
             '+' => Node::Inc(1, 0, false),
             '-' => Node::Dec(1, 0, false),
-            '.' => Node::Out,
-            ',' => Node::In,
+            '.' => Node::Out(0, false),
+            ',' => Node::In(0, false),
             '[' => unreachable!(),
             ']' => unreachable!(),
             c => Node::Comment(c)
@@ -75,8 +75,8 @@ mod tests {
             Node::Right(1),
             Node::Inc(1, 0, false),
             Node::Dec(1, 0, false),
-            Node::Out,
-            Node::In
+            Node::Out(0, false),
+            Node::In(0, false)
         )));
     }
 

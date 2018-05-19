@@ -74,8 +74,8 @@ pub enum Node {
     Inc(u8, i32, bool),
     Dec(u8, i32, bool),
     Assign(u8, i32, bool),
-    Out,
-    In,
+    Out(i32, bool),
+    In(i32, bool),
     Conditional(Vec<Node>),
     Comment(char),
 }
@@ -141,13 +141,25 @@ impl Node {
                 }
                 Ok(())
             },
-            Node::Out => {
-                stdout.write(&[ s.cells[s.pos as usize] ]).map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
+            Node::Out(offset, move_pointer) => {
+                let pos = offset_index(s.pos, offset) as usize;
+                stdout.write(&[ s.cells[pos] ]).map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
+
+                if *move_pointer {
+                    s.pos = pos as u16;
+                }
+
                 Ok(())
             },
-            Node::In => {
+            Node::In(offset, move_pointer) => {
+                let pos = offset_index(s.pos, offset);
                 let v = stdin.bytes().next().ok_or(RuntimeError::ReadError("No data from stdin".to_string()))?;
-                s.cells[s.pos as usize] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
+                s.cells[pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
+
+                if *move_pointer {
+                    s.pos = pos as u16;
+                }
+
                 Ok(())
             },
             _ => Ok(())
@@ -463,11 +475,41 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::In.execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::In(0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
         assert_eq!(s.cells[0], 'b' as u8);
+    }
+
+    #[test]
+    fn it_should_read_from_stdin_with_offset() {
+        let stdin = vec!( 'b' as u8 );
+        let mut stdout = vec!();
+        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::In(1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, initial_state.pos);
+        assert_eq!(s.cells[2..], initial_state.cells[2..]);
+        assert_eq!(s.cells[0], 'a' as u8);
+        assert_eq!(s.cells[1], 'b' as u8);
+    }
+
+    #[test]
+    fn it_should_read_from_stdin_with_offset_and_move_pointer() {
+        let stdin = vec!( 'b' as u8 );
+        let mut stdout = vec!();
+        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let mut s = initial_state.clone();
+
+        Node::In(1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 1);
+        assert_eq!(s.cells[2..], initial_state.cells[2..]);
+        assert_eq!(s.cells[0], 'a' as u8);
+        assert_eq!(s.cells[1], 'b' as u8);
     }
 
     #[test]
@@ -477,12 +519,46 @@ mod tests {
         let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::Out.execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Out(0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
-        assert_eq!(s.cells[1..], initial_state.cells[1..]);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(stdout.len(), 1);
         assert_eq!(stdout.get(0), Some(&('a' as u8)));
+    }
+
+    #[test]
+    fn it_should_write_to_stdout_with_offset() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[1] = 'b' as u8;
+
+        let mut s = initial_state.clone();
+
+        Node::Out(1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, initial_state.pos);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
+        assert_eq!(stdout.len(), 1);
+        assert_eq!(stdout.get(0), Some(&('b' as u8)));
+    }
+
+    #[test]
+    fn it_should_write_to_stdout_with_offset_and_move_pointer() {
+        let stdin = vec!();
+        let mut stdout = vec!();
+        let mut initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        initial_state.cells[1] = 'b' as u8;
+
+        let mut s = initial_state.clone();
+
+        Node::Out(1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+
+        assert_eq!(s.pos, 1);
+        assert_eq!(s.cells[0..], initial_state.cells[0..]);
+        assert_eq!(stdout.len(), 1);
+        assert_eq!(stdout.get(0), Some(&('b' as u8)));
     }
 
     #[test]

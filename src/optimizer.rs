@@ -146,6 +146,8 @@ impl OptimizationStep for CollapseOffsets {
                         Node::Inc(v, 0, false) => acc.push(Node::Inc(v, offset as i32, true)),
                         Node::Dec(v, 0, false) => acc.push(Node::Dec(v, offset as i32, true)),
                         Node::Assign(v, 0, false) => acc.push(Node::Assign(v, offset as i32, true)),
+                        Node::Out(0, false) => acc.push(Node::Out(offset as i32, true)),
+                        Node::In(0, false) => acc.push(Node::In(offset as i32, true)),
                         n => {
                             acc.push(last.unwrap());
                             acc.push(n);
@@ -157,6 +159,8 @@ impl OptimizationStep for CollapseOffsets {
                         Node::Inc(v, 0, false) => acc.push(Node::Inc(v, -(offset as i32), true)),
                         Node::Dec(v, 0, false) => acc.push(Node::Dec(v, -(offset as i32), true)),
                         Node::Assign(v, 0, false) => acc.push(Node::Assign(v, -(offset as i32), true)),
+                        Node::Out(0, false) => acc.push(Node::Out(-(offset as i32), true)),
+                        Node::In(0, false) => acc.push(Node::In(-(offset as i32), true)),
                         n => {
                             acc.push(last.unwrap());
                             acc.push(n);
@@ -167,7 +171,9 @@ impl OptimizationStep for CollapseOffsets {
                     match new_node {
                         Node::Right(right) => {
                             match old_node {
-                                Node::Inc(value, offset, true) | Node::Dec(value, offset, true) | Node::Assign(value, offset, true) => {
+                                Node::Inc(value, offset, true) |
+                                Node::Dec(value, offset, true) |
+                                Node::Assign(value, offset, true) => {
                                     if offset < 0 {
                                         let diff = offset.abs() - right as i32;
                                         let build_node = match old_node {
@@ -184,6 +190,30 @@ impl OptimizationStep for CollapseOffsets {
                                             acc.push(build_node(value, offset, false));
                                         } else {
                                             acc.push(build_node(value, offset, false));
+                                            acc.push(Node::Right(diff.abs() as u8));
+                                        }
+                                    } else {
+                                        acc.push(old_node);
+                                        acc.push(new_node);
+                                    }
+                                },
+                                Node::In(offset, true) |
+                                Node::Out(offset, true) => {
+                                    if offset < 0 {
+                                        let diff = offset.abs() - right as i32;
+                                        let build_node = match old_node {
+                                            Node::In(_, _) => Node::In,
+                                            Node::Out(_, _) => Node::Out,
+                                            _ => unreachable!()
+                                        };
+
+                                        if diff > 0 {
+                                            acc.push(Node::Left(diff as u8));
+                                            acc.push(build_node(-(right as i32), false));
+                                        } else if diff == 0 {
+                                            acc.push(build_node(offset, false));
+                                        } else {
+                                            acc.push(build_node(offset, false));
                                             acc.push(Node::Right(diff.abs() as u8));
                                         }
                                     } else {
@@ -217,6 +247,29 @@ impl OptimizationStep for CollapseOffsets {
                                         } else {
                                             acc.push(Node::Right(diff as u8));
                                             acc.push(build_node(value, left as i32, false));
+                                        }
+                                    } else {
+                                        acc.push(old_node);
+                                        acc.push(new_node);
+                                    }
+                                },
+                                Node::In(offset, true) | Node::Out(offset, true) => {
+                                    if offset > 0 {
+                                        let diff = offset - left as i32;
+                                        let build_node = match old_node {
+                                            Node::In(_, _) => Node::In,
+                                            Node::Out(_, _) => Node::Out,
+                                            _ => unreachable!()
+                                        };
+
+                                        if diff < 0 {
+                                            acc.push(build_node(offset, false));
+                                            acc.push(Node::Left((-diff) as u8));
+                                        } else if diff == 0 {
+                                            acc.push(build_node(offset, false));
+                                        } else {
+                                            acc.push(Node::Right(diff as u8));
+                                            acc.push(build_node(left as i32, false));
                                         }
                                     } else {
                                         acc.push(old_node);
@@ -415,6 +468,10 @@ mod tests {
             Node::Dec(1, 0, false),
             Node::Right(5),
             Node::Assign(1, 0, false),
+            Node::Right(5),
+            Node::In(0, false),
+            Node::Right(5),
+            Node::Out(0, false),
             Node::Conditional(vec!(
                 Node::Right(5),
                 Node::Inc(1, 0, false),
@@ -430,6 +487,8 @@ mod tests {
             Node::Inc(1, 5, true),
             Node::Dec(1, 5, true),
             Node::Assign(1, 5, true),
+            Node::In(5, true),
+            Node::Out(5, true),
             Node::Conditional(vec!(
                 Node::Inc(1, 5, true),
                 Node::Dec(1, 5, true),
@@ -447,6 +506,10 @@ mod tests {
             Node::Dec(1, 0, false),
             Node::Left(5),
             Node::Assign(1, 0, false),
+            Node::Left(5),
+            Node::In(0, false),
+            Node::Left(5),
+            Node::Out(0, false),
             Node::Conditional(vec!(
                 Node::Left(5),
                 Node::Inc(1, 0, false),
@@ -462,6 +525,8 @@ mod tests {
             Node::Inc(1, -5, true),
             Node::Dec(1, -5, true),
             Node::Assign(1, -5, true),
+            Node::In(-5, true),
+            Node::Out(-5, true),
             Node::Conditional(vec!(
                 Node::Inc(1, -5, true),
                 Node::Dec(1, -5, true),
@@ -482,6 +547,12 @@ mod tests {
             Node::Right(5),
             Node::Assign(1, 0, false),
             Node::Left(5),
+            Node::Right(5),
+            Node::In(0, false),
+            Node::Left(5),
+            Node::Right(5),
+            Node::Out(0, false),
+            Node::Left(5),
             Node::Conditional(vec!(
                 Node::Left(5),
                 Node::Inc(1, 0, false),
@@ -500,6 +571,8 @@ mod tests {
             Node::Inc(1, -5, false),
             Node::Dec(1, -5, false),
             Node::Assign(1, 5, false),
+            Node::In(5, false),
+            Node::Out(5, false),
             Node::Conditional(vec!(
                 Node::Inc(1, -5, false),
                 Node::Dec(1, -5, false),
