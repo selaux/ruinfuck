@@ -81,9 +81,9 @@ impl OptimizationStep for MergeRepeatedOperators {
     }
 }
 
-struct ReplaceZeroAssignments;
+struct CollapseAssignments;
 
-impl OptimizationStep for ReplaceZeroAssignments {
+impl OptimizationStep for CollapseAssignments {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
         code
             .into_iter()
@@ -97,7 +97,35 @@ impl OptimizationStep for ReplaceZeroAssignments {
                 },
                 n => n
             })
-            .collect()
+            .fold(vec!(), move |mut acc, c| {
+                let last = acc.pop();
+                let mut handled = false;
+
+                match (&last, &c) {
+                    (Some(Node::Assign(0, offset1, false)), Node::Inc(inc_val, offset2, false)) => {
+                        if offset1 == offset2 {
+                            acc.push(Node::Assign(*inc_val, *offset1, false));
+                            handled = true;
+                        }
+                    },
+                    (Some(Node::Assign(0, offset1, false)), Node::Dec(dec_val, offset2, false)) => {
+                        if offset1 == offset2 {
+                            acc.push(Node::Assign(0u8.wrapping_sub(*dec_val), *offset1, false));
+                            handled = true;
+                        }
+                    },
+                    _ => {}
+                };
+
+                if !handled {
+                    if let Some(last) = last {
+                        acc.push(last);
+                    }
+                    acc.push(c);
+                }
+
+                acc
+            })
     }
 }
 
@@ -220,7 +248,7 @@ impl OptimizationStep for CollapseOffsets {
 pub fn optimize_code(code: &Vec<Node>) -> Vec<Node> {
     let without_comments: Vec<Node> = FilterComments.apply(code.clone());
     let joined_operators = MergeRepeatedOperators.apply(without_comments);
-    let without_zero_loops = ReplaceZeroAssignments.apply(joined_operators);
+    let without_zero_loops = CollapseAssignments.apply(joined_operators);
     let with_offsets = CollapseOffsets.apply(without_zero_loops);
 
     with_offsets
@@ -351,6 +379,29 @@ mod tests {
             Node::Assign(0, 0, false),
             Node::Conditional(vec!(
                 Node::Assign(0, 0, false),
+            ))
+        ));
+    }
+
+    #[test]
+    fn it_should_optimize_assignment_loops() {
+        let code = vec!(
+            Node::Conditional(vec!(Node::Dec(1, 0, false))),
+            Node::Inc(100, 0, false),
+            Node::Conditional(vec!(Node::Dec(1, 0, false))),
+            Node::Dec(1, 0, false),
+            Node::Conditional(vec!(
+                Node::Conditional(vec!(Node::Dec(1, 0, false))),
+                Node::Inc(100, 0, false),
+            ))
+        );
+        let result = optimize_code(&code);
+
+        assert_eq!(result, vec!(
+            Node::Assign(100, 0, false),
+            Node::Assign(255, 0, false),
+            Node::Conditional(vec!(
+                Node::Assign(100, 0, false),
             ))
         ));
     }
