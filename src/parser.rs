@@ -5,8 +5,8 @@ use vm::Node;
 impl From<char> for Node {
     fn from(c: char) -> Node {
         match c {
-            '>' => Node::Right(1),
-            '<' => Node::Left(1),
+            '>' => Node::Shift(1),
+            '<' => Node::Shift(-1),
             '+' => Node::Inc(1, 0, false),
             '-' => Node::Dec(1, 0, false),
             '.' => Node::Out(0, false),
@@ -71,8 +71,8 @@ mod tests {
         let result = parse_code(&mut code.as_bytes());
 
         assert_eq!(result, Ok(vec!(
-            Node::Left(1),
-            Node::Right(1),
+            Node::Shift(-1),
+            Node::Shift(1),
             Node::Inc(1, 0, false),
             Node::Dec(1, 0, false),
             Node::Out(0, false),
@@ -97,8 +97,8 @@ mod tests {
 
         assert_eq!(result, Ok(vec!(
             Node::Conditional(vec!(
-                Node::Left(1),
-                Node::Right(1)
+                Node::Shift(-1),
+                Node::Shift(1)
             ))
         )));
     }
@@ -110,9 +110,9 @@ mod tests {
 
         assert_eq!(result, Ok(vec!(
             Node::Conditional(vec!(
-                Node::Left(1),
+                Node::Shift(-1),
                 Node::Conditional(vec!(
-                    Node::Right(1)
+                    Node::Shift(1)
                 ))
             ))
         )));

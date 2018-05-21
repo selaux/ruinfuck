@@ -68,8 +68,7 @@ impl fmt::Display for State {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
-    Right(u8),
-    Left(u8),
+    Shift(i32),
     // value, (offset_to), offset, move_pointer
     Inc(u8, i32, bool),
     Dec(u8, i32, bool),
@@ -109,12 +108,8 @@ impl Node {
                 }
                 Ok(())
             },
-            Node::Right(i) => {
-                s.pos = s.pos.wrapping_add(*i as u16);
-                Ok(())
-            },
-            Node::Left(i) => {
-                s.pos = s.pos.wrapping_sub(*i as u16);
+            Node::Shift(i) => {
+                s.pos = offset_index(s.pos, i) as u16;
                 Ok(())
             },
             Node::Inc(i, offset, move_pointer) => {
@@ -204,7 +199,7 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::Right(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 1);
@@ -217,10 +212,10 @@ mod tests {
         let initial_state = State { pos: NUMBER_OF_CELLS - 1, cells: [0; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::Right(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
-        assert_eq!(s.pos, 1);
+        assert_eq!(s.pos, 2);
     }
 
     #[test]
@@ -230,7 +225,7 @@ mod tests {
         let initial_state = State { pos: 1, cells: [0; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::Left(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(-1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 0);
@@ -243,10 +238,10 @@ mod tests {
         let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
         let mut s = initial_state.clone();
 
-        Node::Left(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(-3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
-        assert_eq!(s.pos, NUMBER_OF_CELLS - 2);
+        assert_eq!(s.pos, NUMBER_OF_CELLS - 3);
     }
 
     #[test]
@@ -712,14 +707,14 @@ mod tests {
         // This code piece moves the value of the current cell (cell0) two cells to the right (cell2)
         let code = vec!(
             Node::Conditional(vec!(
-                Node::Right(2),
+                Node::Shift(2),
                 Node::Assign(0, 0, false),
-                Node::Left(2),
+                Node::Shift(-2),
                 Node::Conditional(vec!(
                     Node::Dec(1, 0, false),
-                    Node::Right(2),
+                    Node::Shift(2),
                     Node::Inc(1, 0, false),
-                    Node::Left(2)
+                    Node::Shift(-2)
                 ))
             ))
         );
@@ -743,14 +738,14 @@ mod tests {
         // This code piece moves the value of the current cell (cell0) two cells to the right (cell2)
         let code = vec!(
             Node::Conditional(vec!(
-                Node::Right(2),
+                Node::Shift(2),
                 Node::Assign(0, 0, false),
-                Node::Left(2),
+                Node::Shift(-2),
                 Node::Conditional(vec!(
                     Node::Dec(1, 0, false),
-                    Node::Right(2),
+                    Node::Shift(2),
                     Node::Inc(1, 0, false),
-                    Node::Left(2)
+                    Node::Shift(2)
                 ))
             ))
         );

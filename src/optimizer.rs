@@ -48,18 +48,12 @@ impl OptimizationStep for MergeRepeatedOperators {
             let last = acc.pop();
 
             let merged = match (&last, &node) {
-                (Some(Node::Right(x)), Node::Right(y)) => {
-                    if *x as u16 + *y as u16 > 255 {
-                        None
+                (Some(Node::Shift(x)), Node::Shift(y)) => {
+                    let diff = *x as i64 + *y as i64;
+                    if diff >= i32::min_value() as i64 && diff <= i32::max_value() as i64 {
+                        Some(Node::Shift(x + y))
                     } else {
-                        Some(Node::Right(x + y))
-                    }
-                },
-                (Some(Node::Left(x)), Node::Left(y)) => {
-                    if *x as u16 + *y as u16 > 255 {
                         None
-                    } else {
-                        Some(Node::Left(x + y))
                     }
                 },
                 (Some(Node::Inc(x, offset1, false)), Node::Inc(y, offset2, false)) => {
@@ -157,7 +151,7 @@ impl OptimizationStep for CollapseOffsets {
                 n => n
             };
             let modified = match &last {
-                Some(Node::Right(offset)) => {
+                Some(Node::Shift(offset)) => {
                     match new_node {
                         Node::Inc(v, 0, false) => Some(vec!(Node::Inc(v, *offset as i32, true))),
                         Node::Dec(v, 0, false) => Some(vec!(Node::Dec(v, *offset as i32, true))),
@@ -167,44 +161,38 @@ impl OptimizationStep for CollapseOffsets {
                         _ => None
                     }
                 },
-                Some(Node::Left(offset)) => {
-                    match new_node {
-                        Node::Inc(v, 0, false) => Some(vec!(Node::Inc(v, -(*offset as i32), true))),
-                        Node::Dec(v, 0, false) => Some(vec!(Node::Dec(v, -(*offset as i32), true))),
-                        Node::Assign(v, 0, false) => Some(vec!(Node::Assign(v, -(*offset as i32), true))),
-                        Node::Out(0, false) => Some(vec!(Node::Out(-(*offset as i32), true))),
-                        Node::In(0, false) => Some(vec!(Node::In(-(*offset as i32), true))),
-                        _ => None
-                    }
-                },
                 Some(old_node) => {
                     match new_node {
-                        Node::Right(right) => {
+                        Node::Shift(shift_offset) => {
                             match old_node {
                                 Node::Inc(value, offset, true) |
                                 Node::Dec(value, offset, true) |
                                 Node::Assign(value, offset, true) => {
-                                    if *offset < 0 {
-                                        let diff = offset.abs() - right as i32;
+                                    if offset.signum() != shift_offset.signum() {
+                                        let diff = offset.abs() - shift_offset.abs();
                                         let build_node = match old_node {
                                             Node::Inc(_, _, _) => Node::Inc,
                                             Node::Dec(_, _, _) => Node::Dec,
                                             Node::Assign(_, _, _) => Node::Assign,
                                             _ => unreachable!()
                                         };
+                                        let weighted_diff = offset.signum() * diff;
+                                        let shift = Node::Shift(weighted_diff);
 
-                                        if diff > 0 {
-                                            Some(vec!(
-                                                Node::Left(diff as u8),
-                                                build_node(*value, -(right as i32), false)
-                                            ))
-                                        } else if diff == 0 {
+                                        if diff == 0 {
                                             Some(vec!(build_node(*value, *offset, false)))
                                         } else {
-                                            Some(vec!(
-                                                build_node(*value, *offset, false),
-                                                Node::Right(diff.abs() as u8)
-                                            ))
+                                            if diff > 0 {
+                                                Some(vec!(
+                                                    shift,
+                                                    build_node(*value, *offset - offset.signum() * diff, false),
+                                                ))
+                                            } else {
+                                                Some(vec!(
+                                                    build_node(*value, *offset, false),
+                                                    shift
+                                                ))
+                                            }
                                         }
                                     } else {
                                         None
@@ -212,87 +200,31 @@ impl OptimizationStep for CollapseOffsets {
                                 },
                                 Node::In(offset, true) |
                                 Node::Out(offset, true) => {
-                                    if *offset < 0 {
-                                        let diff = offset.abs() - right as i32;
+                                    if offset.signum() != shift_offset.signum() {
+                                        let diff = offset.abs() - shift_offset.abs();
                                         let build_node = match old_node {
                                             Node::In(_, _) => Node::In,
                                             Node::Out(_, _) => Node::Out,
                                             _ => unreachable!()
                                         };
 
-                                        if diff > 0 {
-                                            Some(vec!(
-                                                Node::Left(diff as u8),
-                                                build_node(-(right as i32), false)
-                                            ))
-                                        } else if diff == 0 {
+                                        let weighted_diff = offset.signum() * diff;
+                                        let shift = Node::Shift(weighted_diff);
+
+                                        if diff == 0 {
                                             Some(vec!(build_node(*offset, false)))
                                         } else {
-                                            Some(vec!(
-                                                build_node(*offset, false),
-                                                Node::Right(diff.abs() as u8)
-                                            ))
-                                        }
-                                    } else {
-                                        None
-                                    }
-                                },
-                                _ => None
-                            }
-                        },
-                        Node::Left(left) => {
-                            match old_node {
-                                Node::Inc(value, offset, true) |
-                                Node::Dec(value, offset, true) |
-                                Node::Assign(value, offset, true) => {
-                                    if *offset > 0 {
-                                        let diff = offset - left as i32;
-                                        let build_node = match old_node {
-                                            Node::Inc(_, _, _) => Node::Inc,
-                                            Node::Dec(_, _, _) => Node::Dec,
-                                            Node::Assign(_, _, _) => Node::Assign,
-                                            _ => unreachable!()
-                                        };
-
-                                        if diff < 0 {
-                                            Some(vec!(
-                                                build_node(*value, *offset, false),
-                                                Node::Left((-diff) as u8)
-                                            ))
-                                        } else if diff == 0 {
-                                            Some(vec!(build_node(*value, *offset, false)))
-                                        } else {
-                                            Some(vec!(
-                                                Node::Right(diff as u8),
-                                                build_node(*value, left as i32, false)
-                                            ))
-                                        }
-                                    } else {
-                                        None
-                                    }
-                                },
-                                Node::In(offset, true) |
-                                Node::Out(offset, true) => {
-                                    if *offset > 0 {
-                                        let diff = offset - left as i32;
-                                        let build_node = match old_node {
-                                            Node::In(_, _) => Node::In,
-                                            Node::Out(_, _) => Node::Out,
-                                            _ => unreachable!()
-                                        };
-
-                                        if diff < 0 {
-                                            Some(vec!(
-                                                build_node(*offset, false),
-                                                Node::Left((-diff) as u8)
-                                            ))
-                                        } else if diff == 0 {
-                                            Some(vec!(build_node(*offset, false)))
-                                        } else {
-                                            Some(vec!(
-                                                Node::Right(diff as u8),
-                                                build_node(left as i32, false)
-                                            ))
+                                            if diff > 0 {
+                                                Some(vec!(
+                                                    shift,
+                                                    build_node(*offset - offset.signum() * diff, false),
+                                                ))
+                                            } else {
+                                                Some(vec!(
+                                                    build_node(*offset, false),
+                                                    shift
+                                                ))
+                                            }
                                         }
                                     } else {
                                         None
@@ -333,8 +265,7 @@ impl OptimizationStep for DeferMovements {
                 let (mut memo, mut current_block) = memo;
 
                 match new_node {
-                    Node::Left(_) |
-                    Node::Right(_) |
+                    Node::Shift(_) |
                     Node::Inc(_, _, _) |
                     Node::Dec(_, _, _) |
                     Node::Mul(_, _, _, _) |
@@ -368,8 +299,17 @@ impl OptimizationStep for DeferMovements {
 
                 for node in group {
                     match node {
-                        Node::Left(v) => current_offset -= v as i32,
-                        Node::Right(v) => current_offset += v as i32,
+                        Node::Shift(v) => {
+                            let sum = current_offset as i64 + v as i64;
+
+                            if sum >= i32::min_value() as i64 && sum <= i32::max_value() as i64 {
+                                current_offset = sum as i32;
+                            } else {
+                                memo.push(Node::Shift(current_offset));
+                                current_offset = v;
+
+                            }
+                        },
                         Node::Dec(v, offset, move_pointer) |
                         Node::Inc(v, offset, move_pointer) |
                         Node::Assign(v, offset, move_pointer) => {
@@ -410,18 +350,8 @@ impl OptimizationStep for DeferMovements {
                     }
                 }
 
-                if current_offset > 0 {
-                    while current_offset > 255 {
-                        memo.push(Node::Right(255));
-                        current_offset -= 255;
-                    }
-                    memo.push(Node::Right(current_offset as u8));
-                } else if current_offset < 0 {
-                    while current_offset < -255 {
-                        memo.push(Node::Left(255));
-                        current_offset += 255;
-                    }
-                    memo.push(Node::Left((-current_offset) as u8));
+                if current_offset != 0 {
+                    memo.push(Node::Shift(current_offset));
                 }
             }
 
@@ -491,8 +421,7 @@ impl OptimizationStep for CollapseScanLoops {
         code.into_iter()
             .map(|n| match n {
                 Node::Conditional(body) => match body.as_slice() {
-                    [Node::Left(i)] => Node::Scan(-(*i as i32)),
-                    [Node::Right(i)] => Node::Scan(*i as i32),
+                    [Node::Shift(i)] => Node::Scan(*i),
                     body => Node::Conditional(self.apply(body.to_vec()))
                 },
                 c => c
@@ -542,11 +471,11 @@ mod tests {
     fn it_should_optimize_away_comments() {
         let code = vec!(
             Node::Comment('a'),
-            Node::Right(1),
+            Node::Shift(1),
             Node::Comment('b'),
             Node::Conditional(vec!(
                 Node::Comment('a'),
-                Node::Right(1),
+                Node::Shift(1),
                 Node::Conditional(vec!(
                     Node::Comment('a'),
                     Node::Inc(1, 0, false),
@@ -556,9 +485,9 @@ mod tests {
         let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
-            Node::Right(1),
+            Node::Shift(1),
             Node::Conditional(vec!(
-                Node::Right(1),
+                Node::Shift(1),
                 Node::Conditional(vec!(
                     Node::Inc(1, 0, false),
                 ))
@@ -569,22 +498,22 @@ mod tests {
     #[test]
     fn it_should_optimize_away_repeated_operators() {
         let code = vec!(
-            Node::Right(1),
+            Node::Shift(1),
             Node::Comment('a'),
-            Node::Right(1),
-            Node::Right(1),
-            Node::Left(1),
-            Node::Left(1),
-            Node::Right(1),
+            Node::Shift(1),
+            Node::Shift(1),
+            Node::Shift(-1),
+            Node::Shift(-1),
+            Node::Shift(1),
             Node::Conditional(vec!(
                 Node::Inc(1, 1, false),
                 Node::Comment('a'),
                 Node::Inc(1, 1, false),
                 Node::Conditional(vec!(
                     Node::Comment('a'),
-                    Node::Right(1),
+                    Node::Shift(1),
                     Node::Dec(1, 1, false),
-                    Node::Right(1),
+                    Node::Shift(1),
                     Node::Dec(1, 1, false),
                     Node::Dec(1, 1, false),
                 ))
@@ -599,15 +528,13 @@ mod tests {
         });
 
         assert_eq!(result, vec!(
-            Node::Right(3),
-            Node::Left(2),
-            Node::Right(1),
+            Node::Shift(2),
             Node::Conditional(vec!(
                 Node::Inc(2, 1, false),
                 Node::Conditional(vec!(
-                    Node::Right(1),
+                    Node::Shift(1),
                     Node::Dec(1, 1, false),
-                    Node::Right(1),
+                    Node::Shift(1),
                     Node::Dec(2, 1, false)
                 ))
             ))
@@ -617,15 +544,15 @@ mod tests {
     #[test]
     fn it_should_not_optimize_operators_that_would_overflow() {
         let code = vec!(
-            Node::Right(254),
-            Node::Right(1),
-            Node::Right(1),
+            Node::Shift(i32::max_value()-1),
+            Node::Shift(1),
+            Node::Shift(1),
         );
         let result = optimize_code(&code, &OptimizationOptions::default());
 
         assert_eq!(result, vec!(
-            Node::Right(255),
-            Node::Right(1)
+            Node::Shift(i32::max_value()),
+            Node::Shift(1)
         ));
     }
 
@@ -695,22 +622,22 @@ mod tests {
     #[test]
     fn it_should_collapse_to_positive_offsets() {
         let code = vec!(
-            Node::Right(5),
+            Node::Shift(5),
             Node::Inc(1, 0, false),
-            Node::Right(5),
+            Node::Shift(5),
             Node::Dec(1, 0, false),
-            Node::Right(5),
+            Node::Shift(5),
             Node::Assign(1, 0, false),
-            Node::Right(5),
+            Node::Shift(5),
             Node::In(0, false),
-            Node::Right(5),
+            Node::Shift(5),
             Node::Out(0, false),
             Node::Conditional(vec!(
-                Node::Right(5),
+                Node::Shift(5),
                 Node::Inc(1, 0, false),
-                Node::Right(5),
+                Node::Shift(5),
                 Node::Dec(1, 0, false),
-                Node::Right(5),
+                Node::Shift(5),
                 Node::Assign(1, 0, false),
             ))
         );
@@ -739,22 +666,22 @@ mod tests {
     #[test]
     fn it_should_collapse_to_negative_offsets() {
         let code = vec!(
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Inc(1, 0, false),
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Dec(1, 0, false),
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Assign(1, 0, false),
-            Node::Left(5),
+            Node::Shift(-5),
             Node::In(0, false),
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Out(0, false),
             Node::Conditional(vec!(
-                Node::Left(5),
+                Node::Shift(-5),
                 Node::Inc(1, 0, false),
-                Node::Left(5),
+                Node::Shift(-5),
                 Node::Dec(1, 0, false),
-                Node::Left(5),
+                Node::Shift(-5),
                 Node::Assign(1, 0, false),
             ))
         );
@@ -781,36 +708,174 @@ mod tests {
     }
 
     #[test]
+    fn it_should_collapse_non_moving_inc_nodes() {
+        let code = vec!(
+            Node::Shift(-5),
+            Node::Inc(1, 0, false),
+            Node::Shift(5),
+            Node::Shift(5),
+            Node::Inc(2, 0, false),
+            Node::Shift(-5),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::Inc(1, -5, false),
+            Node::Inc(2, 5, false),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_imbalanced_inc_nodes() {
+        let code = vec!(
+            Node::Shift(-5),
+            Node::Inc(1, 0, false),
+            Node::Shift(7),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::Inc(1, -5, false),
+            Node::Shift(2),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_imbalanced_inc_nodes_2() {
+        let code = vec!(
+            Node::Shift(-7),
+            Node::Inc(1, 0, false),
+            Node::Shift(5),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::Shift(-2),
+            Node::Inc(1, -5, false),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_imbalanced_inc_nodes_3() {
+        let code = vec!(
+            Node::Shift(7),
+            Node::Inc(1, 0, false),
+            Node::Shift(-5),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::Shift(2),
+            Node::Inc(1, 5, false),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_imbalanced_inc_nodes_4() {
+        let code = vec!(
+            Node::Shift(5),
+            Node::Inc(1, 0, false),
+            Node::Shift(-9),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::Inc(1, 5, false),
+            Node::Shift(-4),
+        ));
+    }
+
+    #[test]
+    fn it_should_collapse_non_moving_in_nodes() {
+        let code = vec!(
+            Node::Shift(-5),
+            Node::In(0, false),
+            Node::Shift(5),
+            Node::Shift(5),
+            Node::In(0, false),
+            Node::Shift(-5),
+        );
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
+
+        assert_eq!(result, vec!(
+            Node::In(-5, false),
+            Node::In(5, false),
+        ));
+    }
+
+    #[test]
     fn it_should_collapse_non_moving_nodes() {
         let code = vec!(
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Inc(1, 0, false),
-            Node::Right(5),
-            Node::Left(5),
+            Node::Shift(5),
+            Node::Shift(-5),
             Node::Dec(1, 0, false),
-            Node::Right(5),
-            Node::Right(5),
+            Node::Shift(5),
+            Node::Shift(5),
             Node::Assign(1, 0, false),
-            Node::Left(5),
-            Node::Right(5),
+            Node::Shift(-5),
+            Node::Shift(5),
             Node::In(0, false),
-            Node::Left(5),
-            Node::Right(5),
+            Node::Shift(-5),
+            Node::Shift(5),
             Node::Out(0, false),
-            Node::Left(5),
+            Node::Shift(-5),
             Node::Conditional(vec!(
-                Node::Left(5),
+                Node::Shift(-5),
                 Node::Inc(1, 0, false),
-                Node::Right(5),
-                Node::Left(5),
+                Node::Shift(5),
+                Node::Shift(-5),
                 Node::Dec(1, 0, false),
-                Node::Right(5),
-                Node::Right(5),
+                Node::Shift(5),
+                Node::Shift(5),
                 Node::Assign(1, 0, false),
-                Node::Left(5),
+                Node::Shift(-5),
             ))
         );
-        let result = optimize_code(&code, &OptimizationOptions::default());
+        let result = optimize_code(&code, &OptimizationOptions {
+            collapsed_scan_loops: false,
+            collapsed_operators: false,
+            collapsed_loops: false,
+            collapsed_assignments: false,
+            collapsed_offsets: true
+        });
 
         assert_eq!(result, vec!(
             Node::Inc(1, -5, false),
@@ -829,12 +894,12 @@ mod tests {
     #[test]
     fn it_should_collapse_imbalanced_non_moving_nodes() {
         let code = vec!(
-            Node::Left(7),
+            Node::Shift(-7),
             Node::Inc(1, 0, false),
-            Node::Right(5),
-            Node::Left(5),
+            Node::Shift(5),
+            Node::Shift(-5),
             Node::Inc(1, 0, false),
-            Node::Right(7)
+            Node::Shift(7)
         );
         let result = optimize_code(&code, &OptimizationOptions {
             collapsed_scan_loops: false,
@@ -845,18 +910,18 @@ mod tests {
         });
 
         assert_eq!(result, vec!(
-            Node::Left(2),
+            Node::Shift(-2),
             Node::Inc(1, -5, false),
             Node::Inc(1, -5, false),
-            Node::Right(2)
+            Node::Shift(2)
         ));
     }
 
     #[test]
     fn it_should_defer_movement() {
         let code = vec!(
-            Node::Left(1),
-            Node::Right(6),
+            Node::Shift(-1),
+            Node::Shift(6),
 
             Node::Inc(1, 5, true),
             Node::Inc(1, 5, false),
@@ -867,7 +932,7 @@ mod tests {
                 Node::Out(-5, true)
             )),
 
-            Node::Left(10),
+            Node::Shift(-10),
             Node::Inc(1, 5, true),
         );
         let result = optimize_code(&code, &OptimizationOptions::default());
@@ -876,7 +941,7 @@ mod tests {
             Node::Inc(1, 10, false),
             Node::Inc(1, 15, false),
             Node::Mul(1, -5, 15, false),
-            Node::Right(10),
+            Node::Shift(10),
 
             Node::Conditional(vec!(
                 Node::Dec(1, 5, false),
@@ -884,7 +949,7 @@ mod tests {
             )),
 
             Node::Inc(1, -5, false),
-            Node::Left(5),
+            Node::Shift(-5),
         ));
     }
 
@@ -924,17 +989,17 @@ mod tests {
     fn it_should_collapse_scan_loops() {
         let code = vec!(
             Node::Conditional(vec!(
-                Node::Left(1)
+                Node::Shift(-1)
             )),
             Node::Conditional(vec!(
-                Node::Right(3)
+                Node::Shift(3)
             )),
             Node::Conditional(vec!(
                 Node::Conditional(vec!(
-                    Node::Left(1)
+                    Node::Shift(-1)
                 )),
                 Node::Conditional(vec!(
-                    Node::Right(3)
+                    Node::Shift(3)
                 )),
             )),
         );

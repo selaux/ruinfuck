@@ -44,8 +44,7 @@ impl Analyzer for SimpleAnalyzer {
 
             {
                 let entry = match v {
-                    Node::Left(_) => memo.nodes.entry(Node::Left(0)),
-                    Node::Right(_) => memo.nodes.entry(Node::Right(0)),
+                    Node::Shift(_) => memo.nodes.entry(Node::Shift(0)),
                     Node::Inc(_, _, _) => memo.nodes.entry(Node::Inc(0, 0, false)),
                     Node::Dec(_, _, _) => memo.nodes.entry(Node::Dec(0, 0, false)),
                     Node::Mul(_, _, _, _) => memo.nodes.entry(Node::Mul(0, 0, 0, false)),
@@ -84,13 +83,13 @@ mod tests {
     #[test]
     fn it_should_return_results_for_a_single_node() {
         let code = vec!(
-            Node::Left(1)
+            Node::Shift(-1)
         );
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Left(0), 1);
+        expected_nodes.insert(Node::Shift(0), 1);
 
         assert_eq!(result, AnalysisResults { total: 1, nodes: expected_nodes });
     }
@@ -98,17 +97,17 @@ mod tests {
     #[test]
     fn it_should_return_results_for_multiple_different_nodes() {
         let code = vec!(
-            Node::Left(1),
-            Node::Left(2),
-            Node::Right(1),
+            Node::Shift(1),
+            Node::Shift(2),
+            Node::Mul(1, 2, 3 ,false),
             Node::Inc(1, 1, true)
         );
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Left(0), 2);
-        expected_nodes.insert(Node::Right(0), 1);
+        expected_nodes.insert(Node::Shift(0), 2);
+        expected_nodes.insert(Node::Mul(0, 0, 0, false), 1);
         expected_nodes.insert(Node::Inc(0, 0, false), 1);
 
         assert_eq!(result, AnalysisResults { total: 4, nodes: expected_nodes });
@@ -132,10 +131,10 @@ mod tests {
     fn it_should_return_results_for_nested_conditionals() {
         let code = vec!(
             Node::Conditional(vec!(
-                Node::Left(5),
+                Node::Shift(5),
                 Node::Conditional(vec!(
-                    Node::Right(5),
-                    Node::Left(2),
+                    Node::Inc(5, 2, false),
+                    Node::Shift(2),
                 ))
             ))
         );
@@ -144,8 +143,8 @@ mod tests {
         let mut expected_nodes = HashMap::new();
 
         expected_nodes.insert(Node::Conditional(vec!()), 2);
-        expected_nodes.insert(Node::Left(0), 2);
-        expected_nodes.insert(Node::Right(0), 1);
+        expected_nodes.insert(Node::Shift(0), 2);
+        expected_nodes.insert(Node::Inc(0, 0, false), 1);
 
         assert_eq!(result, AnalysisResults { total: 5, nodes: expected_nodes });
     }
