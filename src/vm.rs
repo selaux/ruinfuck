@@ -1,20 +1,20 @@
-use std::fmt;
 use std::default::Default;
-use std::io::{Write, Read};
+use std::fmt;
+use std::io::{Read, Write};
 
 const NUMBER_OF_CELLS: u16 = u16::max_value();
 
 #[derive(Clone)]
 pub struct State {
     pub pos: u16,
-    pub cells: [u8; NUMBER_OF_CELLS as usize]
+    pub cells: [u8; NUMBER_OF_CELLS as usize],
 }
 
 impl Default for State {
     fn default() -> Self {
         State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize]
+            cells: [0; NUMBER_OF_CELLS as usize],
         }
     }
 }
@@ -22,24 +22,26 @@ impl Default for State {
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum RuntimeError {
     WriteError(String),
-    ReadError(String)
+    ReadError(String),
 }
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let cell_count = 25;
-        let cells_to_show: Vec<u16> = (0..25).into_iter().map(|i| {
-            let offset = cell_count / 2;
-            let pos: i64 = self.pos as i64 + i - offset;
+        let cells_to_show: Vec<u16> = (0..25)
+            .into_iter()
+            .map(|i| {
+                let offset = cell_count / 2;
+                let pos: i64 = self.pos as i64 + i - offset;
 
-            if pos < 0 {
-                (NUMBER_OF_CELLS as i64 + pos) as u16
-            } else if pos >= NUMBER_OF_CELLS as i64 {
-                (pos - NUMBER_OF_CELLS as i64) as u16
-            } else {
-                pos as u16
-            }
-        }).collect();
+                if pos < 0 {
+                    (NUMBER_OF_CELLS as i64 + pos) as u16
+                } else if pos >= NUMBER_OF_CELLS as i64 {
+                    (pos - NUMBER_OF_CELLS as i64) as u16
+                } else {
+                    pos as u16
+                }
+            }).collect();
 
         f.write_str("Brainfuck state:\n")?;
         f.write_str("|")?;
@@ -56,7 +58,6 @@ impl fmt::Display for State {
         for cell in &cells_to_show {
             if *cell == self.pos {
                 f.write_str("******|")?;
-
             } else {
                 f.write_str("      |")?;
             }
@@ -81,7 +82,12 @@ pub enum Node {
     Comment(char),
 }
 
-pub fn run_block<R: Read, W: Write>(stdin: &mut R, stdout: &mut W, block: &Vec<Node>, s: &mut State) -> Result<(), RuntimeError> {
+pub fn run_block<R: Read, W: Write>(
+    stdin: &mut R,
+    stdout: &mut W,
+    block: &Vec<Node>,
+    s: &mut State,
+) -> Result<(), RuntimeError> {
     for node in block {
         node.execute(stdin, stdout, s)?;
     }
@@ -100,18 +106,23 @@ fn offset_index(pos: u16, offset: &i32) -> usize {
 }
 
 impl Node {
-    fn execute<R: Read, W: Write>(&self, stdin: &mut R, stdout: &mut W, s: &mut State) -> Result<(), RuntimeError> {
+    fn execute<R: Read, W: Write>(
+        &self,
+        stdin: &mut R,
+        stdout: &mut W,
+        s: &mut State,
+    ) -> Result<(), RuntimeError> {
         match self {
             Node::Conditional(body) => {
                 while s.cells[s.pos as usize] != 0 {
                     run_block(stdin, stdout, body, s)?;
                 }
                 Ok(())
-            },
+            }
             Node::Shift(i) => {
                 s.pos = offset_index(s.pos, i) as u16;
                 Ok(())
-            },
+            }
             Node::Inc(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
                 let v = s.cells[pos];
@@ -120,7 +131,7 @@ impl Node {
                     s.pos = pos as u16;
                 }
                 Ok(())
-            },
+            }
             Node::Dec(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
                 let v = s.cells[pos];
@@ -129,7 +140,7 @@ impl Node {
                     s.pos = pos as u16;
                 }
                 Ok(())
-            },
+            }
             Node::Mul(mul_value, into, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
                 let into_pos = offset_index(pos as u16, into);
@@ -145,7 +156,7 @@ impl Node {
                     s.pos = pos as u16;
                 }
                 Ok(())
-            },
+            }
             Node::Assign(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset) as usize;
                 s.cells[pos] = *i;
@@ -153,7 +164,7 @@ impl Node {
                     s.pos = pos as u16;
                 }
                 Ok(())
-            },
+            }
             Node::Scan(interval) => {
                 let mut pos = s.pos as usize;
                 while s.cells[pos] != 0 {
@@ -161,20 +172,25 @@ impl Node {
                 }
                 s.pos = pos as u16;
                 Ok(())
-            },
+            }
             Node::Out(offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset) as usize;
-                stdout.write(&[ s.cells[pos] ]).map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
+                stdout
+                    .write(&[s.cells[pos]])
+                    .map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
 
                 if *move_pointer {
                     s.pos = pos as u16;
                 }
 
                 Ok(())
-            },
+            }
             Node::In(offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let v = stdin.bytes().next().ok_or(RuntimeError::ReadError("No data from stdin".to_string()))?;
+                let v = stdin
+                    .bytes()
+                    .next()
+                    .ok_or(RuntimeError::ReadError("No data from stdin".to_string()))?;
                 s.cells[pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
 
                 if *move_pointer {
@@ -182,8 +198,8 @@ impl Node {
                 }
 
                 Ok(())
-            },
-            Node::Comment(_) => Ok(())
+            }
+            Node::Comment(_) => Ok(()),
         }
     }
 }
@@ -194,12 +210,17 @@ mod tests {
 
     #[test]
     fn it_should_increment_the_data_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Shift(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(1)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 1);
@@ -207,12 +228,17 @@ mod tests {
 
     #[test]
     fn it_should_overflow_the_data_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: NUMBER_OF_CELLS - 1, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: NUMBER_OF_CELLS - 1,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Shift(3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(3)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 2);
@@ -220,12 +246,17 @@ mod tests {
 
     #[test]
     fn it_should_decrement_the_data_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 1, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 1,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Shift(-1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(-1)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, 0);
@@ -233,12 +264,17 @@ mod tests {
 
     #[test]
     fn it_should_underflow_the_data_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Shift(-3).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Shift(-3)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(s.pos, NUMBER_OF_CELLS - 3);
@@ -246,12 +282,17 @@ mod tests {
 
     #[test]
     fn it_should_increment_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Inc(1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -260,12 +301,17 @@ mod tests {
 
     #[test]
     fn it_should_increment_cells_at_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Inc(1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -275,12 +321,17 @@ mod tests {
 
     #[test]
     fn it_should_increment_cells_at_offset_and_move_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Inc(1, 1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1, 1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -290,12 +341,17 @@ mod tests {
 
     #[test]
     fn it_should_increment_cells_at_overflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: NUMBER_OF_CELLS-1, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: NUMBER_OF_CELLS - 1,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Inc(1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -304,27 +360,42 @@ mod tests {
 
     #[test]
     fn it_should_increment_cells_at_underflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Inc(1, -1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(1, -1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
-        assert_eq!(s.cells[0..(NUMBER_OF_CELLS-2) as usize], initial_state.cells[0..(NUMBER_OF_CELLS-2) as usize]);
-        assert_eq!(s.cells[(NUMBER_OF_CELLS-1) as usize], 1);
+        assert_eq!(
+            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+        );
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 1);
     }
 
-     #[test]
+    #[test]
     fn it_should_multiply_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 1, cells: [2; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 1,
+            cells: [2; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Mul(2, -1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
-        Node::Mul(3, 1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(2, -1, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
+        Node::Mul(3, 1, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[4..], initial_state.cells[4..]);
@@ -335,13 +406,20 @@ mod tests {
 
     #[test]
     fn it_should_multiply_cells_at_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [2; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [2; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Mul(2, -1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
-        Node::Mul(3, 1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(2, -1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
+        Node::Mul(3, 1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[4..], initial_state.cells[4..]);
@@ -352,13 +430,20 @@ mod tests {
 
     #[test]
     fn it_should_multiply_cells_at_offset_and_move_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 1, cells: [2; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 1,
+            cells: [2; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Mul(2, -1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
-        Node::Mul(3, 0, 1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Mul(2, -1, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
+        Node::Mul(3, 0, 1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 2);
         assert_eq!(s.cells[4..], initial_state.cells[4..]);
@@ -369,13 +454,18 @@ mod tests {
 
     #[test]
     fn it_should_overflow_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
         s.cells[0] = 255;
-        Node::Inc(5, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Inc(5, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -384,12 +474,17 @@ mod tests {
 
     #[test]
     fn it_should_decrement_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [1; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(1, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -398,12 +493,17 @@ mod tests {
 
     #[test]
     fn it_should_decrement_cells_at_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [1; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -413,12 +513,17 @@ mod tests {
 
     #[test]
     fn it_should_decrement_cells_at_offset_and_move_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(1, 1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1, 1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -428,12 +533,17 @@ mod tests {
 
     #[test]
     fn it_should_decrement_cells_at_overflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: NUMBER_OF_CELLS-1, cells: [1; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: NUMBER_OF_CELLS - 1,
+            cells: [1; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(1, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -442,26 +552,39 @@ mod tests {
 
     #[test]
     fn it_should_decrement_cells_at_underflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [1; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(1, -1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(1, -1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
-        assert_eq!(s.cells[0..(NUMBER_OF_CELLS-2) as usize], initial_state.cells[0..(NUMBER_OF_CELLS-2) as usize]);
-        assert_eq!(s.cells[(NUMBER_OF_CELLS-1) as usize], 0);
+        assert_eq!(
+            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+        );
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 0);
     }
 
     #[test]
     fn it_should_underflow_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Dec(5, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Dec(5, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -470,12 +593,17 @@ mod tests {
 
     #[test]
     fn it_should_assign_cells() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Assign(5, 0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Assign(5, 0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -484,12 +612,17 @@ mod tests {
 
     #[test]
     fn it_should_assign_cells_at_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Assign(5, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Assign(5, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -499,12 +632,17 @@ mod tests {
 
     #[test]
     fn it_should_assign_cells_at_offset_and_move_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Assign(5, 1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Assign(5, 1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -514,12 +652,17 @@ mod tests {
 
     #[test]
     fn it_should_assign_cells_at_overflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: NUMBER_OF_CELLS-1, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: NUMBER_OF_CELLS - 1,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Assign(5, 1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Assign(5, 1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -528,26 +671,39 @@ mod tests {
 
     #[test]
     fn it_should_assign_cells_at_underflowing_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [1; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [1; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Assign(5, -1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Assign(5, -1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
-        assert_eq!(s.cells[0..(NUMBER_OF_CELLS-2) as usize], initial_state.cells[0..(NUMBER_OF_CELLS-2) as usize]);
-        assert_eq!(s.cells[(NUMBER_OF_CELLS-1) as usize], 5);
+        assert_eq!(
+            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+        );
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 5);
     }
 
     #[test]
     fn it_should_read_from_stdin() {
-        let stdin = vec!( 'b' as u8 );
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec!['b' as u8];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::In(0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::In(0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
@@ -556,12 +712,17 @@ mod tests {
 
     #[test]
     fn it_should_read_from_stdin_with_offset() {
-        let stdin = vec!( 'b' as u8 );
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec!['b' as u8];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::In(1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::In(1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -571,12 +732,17 @@ mod tests {
 
     #[test]
     fn it_should_read_from_stdin_with_offset_and_move_pointer() {
-        let stdin = vec!( 'b' as u8 );
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec!['b' as u8];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::In(1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::In(1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
@@ -586,12 +752,17 @@ mod tests {
 
     #[test]
     fn it_should_write_to_stdout() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
-        Node::Out(0, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Out(0, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -601,14 +772,19 @@ mod tests {
 
     #[test]
     fn it_should_write_to_stdout_with_offset() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[1] = 'b' as u8;
 
         let mut s = initial_state.clone();
 
-        Node::Out(1, false).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Out(1, false)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -618,14 +794,19 @@ mod tests {
 
     #[test]
     fn it_should_write_to_stdout_with_offset_and_move_pointer() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 0, cells: ['a' as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 0,
+            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[1] = 'b' as u8;
 
         let mut s = initial_state.clone();
 
-        Node::Out(1, true).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Out(1, true)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -635,14 +816,19 @@ mod tests {
 
     #[test]
     fn it_should_scan_left() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 21, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 21,
+            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[10] = 0;
 
         let mut s = initial_state.clone();
 
-        Node::Scan(-1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Scan(-1)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 10);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -650,15 +836,20 @@ mod tests {
 
     #[test]
     fn it_should_scan_left_with_interval() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 10, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 10,
+            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[9] = 0;
         initial_state.cells[8] = 0;
 
         let mut s = initial_state.clone();
 
-        Node::Scan(-2).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Scan(-2)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 8);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -666,14 +857,19 @@ mod tests {
 
     #[test]
     fn it_should_scan_right() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 0, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 0,
+            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[9] = 0;
 
         let mut s = initial_state.clone();
 
-        Node::Scan(1).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Scan(1)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 9);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -681,15 +877,20 @@ mod tests {
 
     #[test]
     fn it_should_scan_right_with_interval() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let mut initial_state = State { pos: 0, cells: [1 as u8; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let mut initial_state = State {
+            pos: 0,
+            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+        };
         initial_state.cells[1] = 0;
         initial_state.cells[2] = 0;
 
         let mut s = initial_state.clone();
 
-        Node::Scan(2).execute(&mut stdin.as_slice(), &mut stdout, &mut s).unwrap();
+        Node::Scan(2)
+            .execute(&mut stdin.as_slice(), &mut stdout, &mut s)
+            .unwrap();
 
         assert_eq!(s.pos, 2);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
@@ -697,27 +898,28 @@ mod tests {
 
     #[test]
     fn it_should_run_nested_code_if_condition_is_true() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
         s.cells[0] = 255;
 
         // This code piece moves the value of the current cell (cell0) two cells to the right (cell2)
-        let code = vec!(
-            Node::Conditional(vec!(
+        let code = vec![Node::Conditional(vec![
+            Node::Shift(2),
+            Node::Assign(0, 0, false),
+            Node::Shift(-2),
+            Node::Conditional(vec![
+                Node::Dec(1, 0, false),
                 Node::Shift(2),
-                Node::Assign(0, 0, false),
+                Node::Inc(1, 0, false),
                 Node::Shift(-2),
-                Node::Conditional(vec!(
-                    Node::Dec(1, 0, false),
-                    Node::Shift(2),
-                    Node::Inc(1, 0, false),
-                    Node::Shift(-2)
-                ))
-            ))
-        );
+            ]),
+        ])];
 
         run_block(&mut stdin.as_slice(), &mut stdout, &code, &mut s).unwrap();
 
@@ -730,25 +932,26 @@ mod tests {
 
     #[test]
     fn it_should_not_run_nested_code_if_condition_is_false() {
-        let stdin = vec!();
-        let mut stdout = vec!();
-        let initial_state = State { pos: 0, cells: [0; NUMBER_OF_CELLS as usize] };
+        let stdin = vec![];
+        let mut stdout = vec![];
+        let initial_state = State {
+            pos: 0,
+            cells: [0; NUMBER_OF_CELLS as usize],
+        };
         let mut s = initial_state.clone();
 
         // This code piece moves the value of the current cell (cell0) two cells to the right (cell2)
-        let code = vec!(
-            Node::Conditional(vec!(
+        let code = vec![Node::Conditional(vec![
+            Node::Shift(2),
+            Node::Assign(0, 0, false),
+            Node::Shift(-2),
+            Node::Conditional(vec![
+                Node::Dec(1, 0, false),
                 Node::Shift(2),
-                Node::Assign(0, 0, false),
-                Node::Shift(-2),
-                Node::Conditional(vec!(
-                    Node::Dec(1, 0, false),
-                    Node::Shift(2),
-                    Node::Inc(1, 0, false),
-                    Node::Shift(2)
-                ))
-            ))
-        );
+                Node::Inc(1, 0, false),
+                Node::Shift(2),
+            ]),
+        ])];
 
         run_block(&mut stdin.as_slice(), &mut stdout, &code, &mut s).unwrap();
 
