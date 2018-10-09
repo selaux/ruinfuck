@@ -1,6 +1,7 @@
 use std::default::Default;
 use vm::Node;
 
+/// Which optimizations to enable.
 pub struct OptimizationOptions {
     collapsed_operators: bool,
     collapsed_assignments: bool,
@@ -21,11 +22,15 @@ impl Default for OptimizationOptions {
     }
 }
 
-trait OptimizationStep {
+/// The trait implemented by every optimization step
+pub trait OptimizationStep {
     fn apply(&self, code: Vec<Node>) -> Vec<Node>;
 }
 
-struct FilterComments;
+/// The "Filter Comments" Optimization
+///
+/// Removes characters that are not matching any brainfuck operators
+pub struct FilterComments;
 
 impl OptimizationStep for FilterComments {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
@@ -40,7 +45,13 @@ impl OptimizationStep for FilterComments {
     }
 }
 
-struct MergeRepeatedOperators;
+
+/// The "Merge Repeated Operators" Optimization
+///
+/// Merges repeated operators into a single instruction
+///
+/// For example `++++` becomes `Inc(4)`
+pub struct MergeRepeatedOperators;
 
 impl OptimizationStep for MergeRepeatedOperators {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
@@ -90,7 +101,13 @@ impl OptimizationStep for MergeRepeatedOperators {
     }
 }
 
-struct CollapseAssignments;
+/// The "Collapse Assignments" Optimization
+///
+/// Collapses `[-]` into `Assign(0)` instructions. This particular loop only decrements until the current cell is 0.
+/// It then subsequently collapses `Assign(0), Inc(x)` instructions into `Assign(x)` instructions.
+///
+/// For example `[-]+++` becomes `Assign(3)`.
+pub struct CollapseAssignments;
 
 impl OptimizationStep for CollapseAssignments {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
@@ -140,7 +157,15 @@ impl OptimizationStep for CollapseAssignments {
     }
 }
 
-struct CollapseOffsets;
+/// The "Collapse Offsets" Optimization
+///
+/// Adds movement information to each instruction. Joins the operation and the adjacent movement into
+/// a single instruction.
+///
+/// For example `>>+++<<` becomes `Inc(3, 2, false)`. Where `3` is the value to increment, `2` the offset
+/// of the data pointer where to increment and `false` the flag to determine whether to move the pointer
+/// to the position at the offset
+pub struct CollapseOffsets;
 
 impl OptimizationStep for CollapseOffsets {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
@@ -255,7 +280,14 @@ impl OptimizationStep for CollapseOffsets {
     }
 }
 
-struct DeferMovements;
+/// The "Defer Movements" Optimization
+///
+/// Defers movement of the data pointer within a the body or loops until the end of the loop. This just
+/// saves a little bit of data pointer movement and will result in a more predictably structured instruction
+/// list.
+///
+/// For example `Inc(3, 2, true), Inc(3, 2, false)` becomes `Inc(3, 2, false), Inc(3, 2, false), MoveDataPointer(2)`.
+pub struct DeferMovements;
 
 impl OptimizationStep for DeferMovements {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
@@ -360,7 +392,19 @@ impl OptimizationStep for DeferMovements {
     }
 }
 
-struct CollapseSimpleLoops;
+/// The "Collapse Simple Loops" Optimization
+///
+/// Introduces the multiplication instruction which is based on what is called a multiplication loop.
+/// When a loop fulfills the following conditions:
+///
+/// - only contains incrementation and decrementation of the data pointer
+/// - does not actually move the data pointer within its body
+/// - and substracts 1 from the data pointer at the begining or end
+///
+/// Then it is actually multiplying the current cell into one ore more other cells.
+///
+/// A brainfuck example: `[>>+++<<-]` becomes `Mul(3, 2, false), Assign(0, 0)`
+pub struct CollapseSimpleLoops;
 
 impl CollapseSimpleLoops {
     fn is_collapsible_loop(body: &Vec<Node>) -> bool {
@@ -414,7 +458,14 @@ impl OptimizationStep for CollapseSimpleLoops {
     }
 }
 
-struct CollapseScanLoops;
+/// The "Collapse Scan Loops" Optimization
+///
+/// Introduces the scan instruction which searches for the next zero to the left or right of the data pointer.
+/// When loops only contain movements of the data pointer they are actually looking for the next 0 to the left
+/// or the right of the data pointer.
+///
+/// A brainfuck example: `[>>]` becomes `Scan(2)`
+pub struct CollapseScanLoops;
 
 impl OptimizationStep for CollapseScanLoops {
     fn apply(&self, code: Vec<Node>) -> Vec<Node> {
