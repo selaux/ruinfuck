@@ -1,12 +1,12 @@
-use std::default::Default;
 use std::collections::HashMap;
+use std::default::Default;
 
 use vm::Node;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisResults {
     total: u32,
-    nodes: HashMap<Node, u32>
+    nodes: HashMap<Node, u32>,
 }
 
 impl AnalysisResults {
@@ -26,7 +26,7 @@ impl Default for AnalysisResults {
     fn default() -> Self {
         AnalysisResults {
             total: 0,
-            nodes: HashMap::new()
+            nodes: HashMap::new(),
         }
     }
 }
@@ -39,32 +39,32 @@ pub struct SimpleAnalyzer {}
 
 impl Analyzer for SimpleAnalyzer {
     fn analyze(&self, code: &Vec<Node>) -> AnalysisResults {
-        code.into_iter().fold(AnalysisResults::default(), move |mut memo, v| {
-            memo.total = memo.total + 1;
+        code.into_iter()
+            .fold(AnalysisResults::default(), move |mut memo, v| {
+                memo.total = memo.total + 1;
 
-            {
-                let entry = match v {
-                    Node::Left(_) => memo.nodes.entry(Node::Left(0)),
-                    Node::Right(_) => memo.nodes.entry(Node::Right(0)),
-                    Node::Inc(_, _, _) => memo.nodes.entry(Node::Inc(0, 0, false)),
-                    Node::Dec(_, _, _) => memo.nodes.entry(Node::Dec(0, 0, false)),
-                    Node::Mul(_, _, _, _) => memo.nodes.entry(Node::Mul(0, 0, 0, false)),
-                    Node::Assign(_, _, _) => memo.nodes.entry(Node::Assign(0, 0, false)),
-                    Node::Scan(_) => memo.nodes.entry(Node::Scan(0)),
-                    Node::Out(_, _) => memo.nodes.entry(Node::Out(0, false)),
-                    Node::In(_, _) => memo.nodes.entry(Node::Out(0, false)),
-                    Node::Comment(_) => memo.nodes.entry(Node::Comment(' ')),
-                    Node::Conditional(_) => memo.nodes.entry(Node::Conditional(vec!())),
-                };
-                entry.and_modify(|e| { *e += 1 }).or_insert(1);
-            }
-            if let Node::Conditional(v) = v {
-                let nested = self.analyze(v);
-                memo.merge(&nested);
-            }
+                {
+                    let entry = match v {
+                        Node::Shift(_) => memo.nodes.entry(Node::Shift(0)),
+                        Node::Inc(_, _, _) => memo.nodes.entry(Node::Inc(0, 0, false)),
+                        Node::Dec(_, _, _) => memo.nodes.entry(Node::Dec(0, 0, false)),
+                        Node::Mul(_, _, _, _) => memo.nodes.entry(Node::Mul(0, 0, 0, false)),
+                        Node::Assign(_, _, _) => memo.nodes.entry(Node::Assign(0, 0, false)),
+                        Node::Scan(_) => memo.nodes.entry(Node::Scan(0)),
+                        Node::Out(_, _) => memo.nodes.entry(Node::Out(0, false)),
+                        Node::In(_, _) => memo.nodes.entry(Node::Out(0, false)),
+                        Node::Comment(_) => memo.nodes.entry(Node::Comment(' ')),
+                        Node::Conditional(_) => memo.nodes.entry(Node::Conditional(vec![])),
+                    };
+                    entry.and_modify(|e| *e += 1).or_insert(1);
+                }
+                if let Node::Conditional(v) = v {
+                    let nested = self.analyze(v);
+                    memo.merge(&nested);
+                }
 
-            memo
-        })
+                memo
+            })
     }
 }
 
@@ -74,82 +74,100 @@ mod tests {
 
     #[test]
     fn it_should_return_empty_results() {
-        let code = vec!();
+        let code = vec![];
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
 
-        assert_eq!(result, AnalysisResults { total: 0, nodes: HashMap::new() });
+        assert_eq!(
+            result,
+            AnalysisResults {
+                total: 0,
+                nodes: HashMap::new()
+            }
+        );
     }
 
     #[test]
     fn it_should_return_results_for_a_single_node() {
-        let code = vec!(
-            Node::Left(1)
-        );
+        let code = vec![Node::Shift(-1)];
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Left(0), 1);
+        expected_nodes.insert(Node::Shift(0), 1);
 
-        assert_eq!(result, AnalysisResults { total: 1, nodes: expected_nodes });
+        assert_eq!(
+            result,
+            AnalysisResults {
+                total: 1,
+                nodes: expected_nodes
+            }
+        );
     }
 
     #[test]
     fn it_should_return_results_for_multiple_different_nodes() {
-        let code = vec!(
-            Node::Left(1),
-            Node::Left(2),
-            Node::Right(1),
-            Node::Inc(1, 1, true)
-        );
+        let code = vec![
+            Node::Shift(1),
+            Node::Shift(2),
+            Node::Mul(1, 2, 3, false),
+            Node::Inc(1, 1, true),
+        ];
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Left(0), 2);
-        expected_nodes.insert(Node::Right(0), 1);
+        expected_nodes.insert(Node::Shift(0), 2);
+        expected_nodes.insert(Node::Mul(0, 0, 0, false), 1);
         expected_nodes.insert(Node::Inc(0, 0, false), 1);
 
-        assert_eq!(result, AnalysisResults { total: 4, nodes: expected_nodes });
+        assert_eq!(
+            result,
+            AnalysisResults {
+                total: 4,
+                nodes: expected_nodes
+            }
+        );
     }
 
     #[test]
     fn it_should_return_results_for_empty_conditionals() {
-        let code = vec!(
-            Node::Conditional(vec!())
-        );
+        let code = vec![Node::Conditional(vec![])];
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Conditional(vec!()), 1);
+        expected_nodes.insert(Node::Conditional(vec![]), 1);
 
-        assert_eq!(result, AnalysisResults { total: 1, nodes: expected_nodes });
+        assert_eq!(
+            result,
+            AnalysisResults {
+                total: 1,
+                nodes: expected_nodes
+            }
+        );
     }
 
     #[test]
     fn it_should_return_results_for_nested_conditionals() {
-        let code = vec!(
-            Node::Conditional(vec!(
-                Node::Left(5),
-                Node::Conditional(vec!(
-                    Node::Right(5),
-                    Node::Left(2),
-                ))
-            ))
-        );
+        let code = vec![Node::Conditional(vec![
+            Node::Shift(5),
+            Node::Conditional(vec![Node::Inc(5, 2, false), Node::Shift(2)]),
+        ])];
         let analyzer = SimpleAnalyzer {};
         let result = analyzer.analyze(&code);
         let mut expected_nodes = HashMap::new();
 
-        expected_nodes.insert(Node::Conditional(vec!()), 2);
-        expected_nodes.insert(Node::Left(0), 2);
-        expected_nodes.insert(Node::Right(0), 1);
+        expected_nodes.insert(Node::Conditional(vec![]), 2);
+        expected_nodes.insert(Node::Shift(0), 2);
+        expected_nodes.insert(Node::Inc(0, 0, false), 1);
 
-        assert_eq!(result, AnalysisResults { total: 5, nodes: expected_nodes });
+        assert_eq!(
+            result,
+            AnalysisResults {
+                total: 5,
+                nodes: expected_nodes
+            }
+        );
     }
 }
-
-
-

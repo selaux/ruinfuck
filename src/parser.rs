@@ -1,19 +1,19 @@
-use std::io::{Read, BufRead};
+use std::io::{BufRead, Read};
 
 use vm::Node;
 
 impl From<char> for Node {
     fn from(c: char) -> Node {
         match c {
-            '>' => Node::Right(1),
-            '<' => Node::Left(1),
+            '>' => Node::Shift(1),
+            '<' => Node::Shift(-1),
             '+' => Node::Inc(1, 0, false),
             '-' => Node::Dec(1, 0, false),
             '.' => Node::Out(0, false),
             ',' => Node::In(0, false),
             '[' => unreachable!(),
             ']' => unreachable!(),
-            c => Node::Comment(c)
+            c => Node::Comment(c),
         }
     }
 }
@@ -23,29 +23,33 @@ pub enum ParserError {
     UnmatchedDelimiter,
     MissingDelimiter,
     Io(String),
-    Internal
+    Internal,
 }
 
 pub fn parse_code<F: BufRead>(code: &mut F) -> Result<Vec<Node>, ParserError> {
-    let parsed = vec!();
-    let mut nested = vec!(parsed);
+    let parsed = vec![];
+    let mut nested = vec![parsed];
 
     for c in code.bytes() {
         let next_char = c.map_err(|e| ParserError::Io(format!("{}", e)))? as char;
 
         match next_char {
-            '[' => {
-                nested.push(vec!())
-            },
+            '[' => nested.push(vec![]),
             ']' => {
                 if nested.len() < 2 {
                     return Err(ParserError::UnmatchedDelimiter);
                 }
 
                 let body = nested.pop().ok_or(ParserError::Internal)?;
-                nested.last_mut().ok_or(ParserError::Internal)?.push(Node::Conditional(body))
-            },
-            c => nested.last_mut().ok_or(ParserError::Internal)?.push(Node::from(c))
+                nested
+                    .last_mut()
+                    .ok_or(ParserError::Internal)?
+                    .push(Node::Conditional(body))
+            }
+            c => nested
+                .last_mut()
+                .ok_or(ParserError::Internal)?
+                .push(Node::from(c)),
         }
     }
 
@@ -70,14 +74,17 @@ mod tests {
         let code = "<>+-.,";
         let result = parse_code(&mut code.as_bytes());
 
-        assert_eq!(result, Ok(vec!(
-            Node::Left(1),
-            Node::Right(1),
-            Node::Inc(1, 0, false),
-            Node::Dec(1, 0, false),
-            Node::Out(0, false),
-            Node::In(0, false)
-        )));
+        assert_eq!(
+            result,
+            Ok(vec!(
+                Node::Shift(-1),
+                Node::Shift(1),
+                Node::Inc(1, 0, false),
+                Node::Dec(1, 0, false),
+                Node::Out(0, false),
+                Node::In(0, false)
+            ))
+        );
     }
 
     #[test]
@@ -85,9 +92,7 @@ mod tests {
         let code = "[]";
         let result = parse_code(&mut code.as_bytes());
 
-        assert_eq!(result, Ok(vec!(
-            Node::Conditional(vec!())
-        )));
+        assert_eq!(result, Ok(vec!(Node::Conditional(vec!()))));
     }
 
     #[test]
@@ -95,12 +100,13 @@ mod tests {
         let code = "[<>]";
         let result = parse_code(&mut code.as_bytes());
 
-        assert_eq!(result, Ok(vec!(
-            Node::Conditional(vec!(
-                Node::Left(1),
-                Node::Right(1)
-            ))
-        )));
+        assert_eq!(
+            result,
+            Ok(vec!(Node::Conditional(vec!(
+                Node::Shift(-1),
+                Node::Shift(1)
+            ))))
+        );
     }
 
     #[test]
@@ -108,14 +114,13 @@ mod tests {
         let code = "[<[>]]";
         let result = parse_code(&mut code.as_bytes());
 
-        assert_eq!(result, Ok(vec!(
-            Node::Conditional(vec!(
-                Node::Left(1),
-                Node::Conditional(vec!(
-                    Node::Right(1)
-                ))
-            ))
-        )));
+        assert_eq!(
+            result,
+            Ok(vec!(Node::Conditional(vec!(
+                Node::Shift(-1),
+                Node::Conditional(vec!(Node::Shift(1)))
+            ))))
+        );
     }
 
     #[test]
