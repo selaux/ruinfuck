@@ -2,19 +2,19 @@ use std::default::Default;
 use std::fmt;
 use std::io::{Read, Write};
 
-const NUMBER_OF_CELLS: u16 = u16::max_value();
+const NUMBER_OF_CELLS: usize = u16::max_value() as usize;
 
 #[derive(Clone)]
 pub struct State {
-    pub pos: u16,
-    pub cells: [u8; NUMBER_OF_CELLS as usize],
+    pub pos: usize,
+    pub cells: [u8; NUMBER_OF_CELLS],
 }
 
 impl Default for State {
     fn default() -> Self {
         State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         }
     }
 }
@@ -28,18 +28,18 @@ pub enum RuntimeError {
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let cell_count = 25;
-        let cells_to_show: Vec<u16> = (0..25)
+        let cells_to_show: Vec<usize> = (0..25)
             .into_iter()
             .map(|i| {
                 let offset = cell_count / 2;
                 let pos: i64 = self.pos as i64 + i - offset;
 
                 if pos < 0 {
-                    (NUMBER_OF_CELLS as i64 + pos) as u16
+                    (NUMBER_OF_CELLS as i64 + pos) as usize
                 } else if pos >= NUMBER_OF_CELLS as i64 {
-                    (pos - NUMBER_OF_CELLS as i64) as u16
+                    (pos - NUMBER_OF_CELLS as i64) as usize
                 } else {
-                    pos as u16
+                    pos as usize
                 }
             }).collect();
 
@@ -51,7 +51,7 @@ impl fmt::Display for State {
         }
         f.write_str("\n|")?;
         for cell in &cells_to_show {
-            f.write_str(&format!("{:6}", self.cells[*cell as usize]))?;
+            f.write_str(&format!("{:6}", self.cells[*cell]))?;
             f.write_str("|")?;
         }
         f.write_str("\n|")?;
@@ -94,7 +94,7 @@ pub fn run_block<R: Read, W: Write>(
     Ok(())
 }
 
-fn offset_index(pos: u16, offset: &i32) -> usize {
+fn offset_index(pos: usize, offset: &i32) -> usize {
     let index = pos as i32 + *offset;
     if index >= 0 && index < NUMBER_OF_CELLS as i32 {
         index as usize
@@ -114,13 +114,13 @@ impl Node {
     ) -> Result<(), RuntimeError> {
         match self {
             Node::Conditional(body) => {
-                while s.cells[s.pos as usize] != 0 {
+                while s.cells[s.pos] != 0 {
                     run_block(stdin, stdout, body, s)?;
                 }
                 Ok(())
             }
             Node::Shift(i) => {
-                s.pos = offset_index(s.pos, i) as u16;
+                s.pos = offset_index(s.pos, i);
                 Ok(())
             }
             Node::Inc(i, offset, move_pointer) => {
@@ -128,7 +128,7 @@ impl Node {
                 let v = s.cells[pos];
                 s.cells[pos] = v.wrapping_add(*i);
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
                 Ok(())
             }
@@ -137,13 +137,13 @@ impl Node {
                 let v = s.cells[pos];
                 s.cells[pos] = v.wrapping_sub(*i);
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
                 Ok(())
             }
             Node::Mul(mul_value, into, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let into_pos = offset_index(pos as u16, into);
+                let into_pos = offset_index(pos, into);
                 let v = s.cells[pos];
                 let abs = mul_value.abs() as u8;
 
@@ -153,34 +153,34 @@ impl Node {
                     s.cells[into_pos] = s.cells[into_pos].wrapping_sub(v.wrapping_mul(abs));
                 }
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
                 Ok(())
             }
             Node::Assign(i, offset, move_pointer) => {
-                let pos = offset_index(s.pos, offset) as usize;
+                let pos = offset_index(s.pos, offset);
                 s.cells[pos] = *i;
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
                 Ok(())
             }
             Node::Scan(interval) => {
-                let mut pos = s.pos as usize;
+                let mut pos = s.pos;
                 while s.cells[pos] != 0 {
-                    pos = offset_index(pos as u16, interval);
+                    pos = offset_index(pos, interval);
                 }
-                s.pos = pos as u16;
+                s.pos = pos;
                 Ok(())
             }
             Node::Out(offset, move_pointer) => {
-                let pos = offset_index(s.pos, offset) as usize;
+                let pos = offset_index(s.pos, offset);
                 stdout
                     .write(&[s.cells[pos]])
                     .map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
 
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
 
                 Ok(())
@@ -194,7 +194,7 @@ impl Node {
                 s.cells[pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
 
                 if *move_pointer {
-                    s.pos = pos as u16;
+                    s.pos = pos;
                 }
 
                 Ok(())
@@ -214,7 +214,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -232,7 +232,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: NUMBER_OF_CELLS - 1,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -250,7 +250,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 1,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -268,7 +268,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -286,7 +286,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -305,7 +305,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -325,7 +325,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -345,7 +345,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: NUMBER_OF_CELLS - 1,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -364,7 +364,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -374,10 +374,10 @@ mod tests {
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(
-            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
-            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+            s.cells[0..(NUMBER_OF_CELLS - 2)],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2)]
         );
-        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 1);
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1)], 1);
     }
 
     #[test]
@@ -386,7 +386,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 1,
-            cells: [2; NUMBER_OF_CELLS as usize],
+            cells: [2; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -410,7 +410,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [2; NUMBER_OF_CELLS as usize],
+            cells: [2; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -434,7 +434,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 1,
-            cells: [2; NUMBER_OF_CELLS as usize],
+            cells: [2; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -458,7 +458,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -478,7 +478,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [1; NUMBER_OF_CELLS as usize],
+            cells: [1; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -497,7 +497,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [1; NUMBER_OF_CELLS as usize],
+            cells: [1; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -517,7 +517,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -537,7 +537,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: NUMBER_OF_CELLS - 1,
-            cells: [1; NUMBER_OF_CELLS as usize],
+            cells: [1; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -556,7 +556,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [1; NUMBER_OF_CELLS as usize],
+            cells: [1; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -566,10 +566,10 @@ mod tests {
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(
-            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
-            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+            s.cells[0..(NUMBER_OF_CELLS - 2)],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2)]
         );
-        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 0);
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1)], 0);
     }
 
     #[test]
@@ -578,7 +578,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -597,7 +597,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -616,7 +616,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -636,7 +636,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -656,7 +656,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: NUMBER_OF_CELLS - 1,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -675,7 +675,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [1; NUMBER_OF_CELLS as usize],
+            cells: [1; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -685,10 +685,10 @@ mod tests {
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(
-            s.cells[0..(NUMBER_OF_CELLS - 2) as usize],
-            initial_state.cells[0..(NUMBER_OF_CELLS - 2) as usize]
+            s.cells[0..(NUMBER_OF_CELLS - 2)],
+            initial_state.cells[0..(NUMBER_OF_CELLS - 2)]
         );
-        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1) as usize], 5);
+        assert_eq!(s.cells[(NUMBER_OF_CELLS - 1)], 5);
     }
 
     #[test]
@@ -697,7 +697,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -716,7 +716,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -736,7 +736,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -756,7 +756,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -776,7 +776,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[1] = 'b' as u8;
 
@@ -798,7 +798,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS as usize],
+            cells: ['a' as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[1] = 'b' as u8;
 
@@ -820,7 +820,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 21,
-            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+            cells: [1 as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[10] = 0;
 
@@ -840,7 +840,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 10,
-            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+            cells: [1 as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[9] = 0;
         initial_state.cells[8] = 0;
@@ -861,7 +861,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+            cells: [1 as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[9] = 0;
 
@@ -881,7 +881,7 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: [1 as u8; NUMBER_OF_CELLS as usize],
+            cells: [1 as u8; NUMBER_OF_CELLS],
         };
         initial_state.cells[1] = 0;
         initial_state.cells[2] = 0;
@@ -902,7 +902,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -936,7 +936,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS as usize],
+            cells: [0; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
