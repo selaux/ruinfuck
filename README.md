@@ -1,4 +1,4 @@
-# Ruinfuck
+# Ruinfuck [![Build Status](https://img.shields.io/travis/selaux/ruinfuck/master.svg?style=flat-square)](https://travis-ci.org/selaux/ruinfuck)
 
 An optimizing brainfuck interpreter written in Rust.
 
