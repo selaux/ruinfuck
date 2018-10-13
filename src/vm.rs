@@ -190,7 +190,7 @@ impl Node {
                 let v = stdin
                     .bytes()
                     .next()
-                    .ok_or(RuntimeError::ReadError("No data from stdin".to_string()))?;
+                    .ok_or_else(|| RuntimeError::ReadError("No data from stdin".to_string()))?;
                 s.cells[pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
 
                 if *move_pointer {
