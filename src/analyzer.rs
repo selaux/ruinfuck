@@ -32,13 +32,13 @@ impl Default for AnalysisResults {
 }
 
 pub trait Analyzer {
-    fn analyze(&self, code: &Vec<Node>) -> AnalysisResults;
+    fn analyze(&self, code: &[Node]) -> AnalysisResults;
 }
 
 pub struct SimpleAnalyzer {}
 
 impl Analyzer for SimpleAnalyzer {
-    fn analyze(&self, code: &Vec<Node>) -> AnalysisResults {
+    fn analyze(&self, code: &[Node]) -> AnalysisResults {
         code.into_iter()
             .fold(AnalysisResults::default(), move |mut memo, v| {
                 memo.total = memo.total + 1;
