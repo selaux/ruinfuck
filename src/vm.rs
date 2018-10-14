@@ -85,7 +85,7 @@ pub enum Node {
 pub fn run_block<R: Read, W: Write>(
     stdin: &mut R,
     stdout: &mut W,
-    block: &Vec<Node>,
+    block: &[Node],
     s: &mut State,
 ) -> Result<(), RuntimeError> {
     for node in block {
@@ -94,8 +94,8 @@ pub fn run_block<R: Read, W: Write>(
     Ok(())
 }
 
-fn offset_index(pos: usize, offset: &i32) -> usize {
-    let index = pos as i32 + *offset;
+fn offset_index(pos: usize, offset: i32) -> usize {
+    let index = pos as i32 + offset;
     if index >= 0 && index < NUMBER_OF_CELLS as i32 {
         index as usize
     } else if index < 0 {
@@ -112,8 +112,8 @@ impl Node {
         stdout: &mut W,
         s: &mut State,
     ) -> Result<(), RuntimeError> {
-        match self {
-            Node::Conditional(body) => {
+        match *self {
+            Node::Conditional(ref body) => {
                 while s.cells[s.pos] != 0 {
                     run_block(stdin, stdout, body, s)?;
                 }
@@ -126,8 +126,8 @@ impl Node {
             Node::Inc(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
                 let v = s.cells[pos];
-                s.cells[pos] = v.wrapping_add(*i);
-                if *move_pointer {
+                s.cells[pos] = v.wrapping_add(i);
+                if move_pointer {
                     s.pos = pos;
                 }
                 Ok(())
@@ -135,8 +135,8 @@ impl Node {
             Node::Dec(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
                 let v = s.cells[pos];
-                s.cells[pos] = v.wrapping_sub(*i);
-                if *move_pointer {
+                s.cells[pos] = v.wrapping_sub(i);
+                if move_pointer {
                     s.pos = pos;
                 }
                 Ok(())
@@ -147,20 +147,20 @@ impl Node {
                 let v = s.cells[pos];
                 let abs = mul_value.abs() as u8;
 
-                if *mul_value >= 0 {
+                if mul_value >= 0 {
                     s.cells[into_pos] = s.cells[into_pos].wrapping_add(v.wrapping_mul(abs));
                 } else {
                     s.cells[into_pos] = s.cells[into_pos].wrapping_sub(v.wrapping_mul(abs));
                 }
-                if *move_pointer {
+                if move_pointer {
                     s.pos = pos;
                 }
                 Ok(())
             }
             Node::Assign(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                s.cells[pos] = *i;
-                if *move_pointer {
+                s.cells[pos] = i;
+                if move_pointer {
                     s.pos = pos;
                 }
                 Ok(())
@@ -179,7 +179,7 @@ impl Node {
                     .write(&[s.cells[pos]])
                     .map_err(|e| RuntimeError::WriteError(format!("{:?}", e)))?;
 
-                if *move_pointer {
+                if move_pointer {
                     s.pos = pos;
                 }
 
@@ -193,7 +193,7 @@ impl Node {
                     .ok_or_else(|| RuntimeError::ReadError("No data from stdin".to_string()))?;
                 s.cells[pos] = v.map_err(|e| RuntimeError::ReadError(format!("{:?}", e)))?;
 
-                if *move_pointer {
+                if move_pointer {
                     s.pos = pos;
                 }
 

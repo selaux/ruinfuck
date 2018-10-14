@@ -57,22 +57,22 @@ impl OptimizationStep for MergeRepeatedOperators {
 
             let merged = match (&last, &node) {
                 (Some(Node::Shift(x)), Node::Shift(y)) => {
-                    let diff = *x as i64 + *y as i64;
-                    if diff >= i32::min_value() as i64 && diff <= i32::max_value() as i64 {
+                    let diff = i64::from(*x) + i64::from(*y);
+                    if diff >= i64::from(i32::min_value()) && diff <= i64::from(i32::max_value()) {
                         Some(Node::Shift(x + y))
                     } else {
                         None
                     }
                 }
                 (Some(Node::Inc(x, offset1, false)), Node::Inc(y, offset2, false)) => {
-                    if *x as u16 + *y as u16 > 255 || offset1 != offset2 {
+                    if u16::from(*x) + u16::from(*y) > 255 || offset1 != offset2 {
                         None
                     } else {
                         Some(Node::Inc(x + y, *offset1, false))
                     }
                 }
                 (Some(Node::Dec(x, offset1, false)), Node::Dec(y, offset2, false)) => {
-                    if *x as u16 + *y as u16 > 255 || offset1 != offset2 {
+                    if u16::from(*x) + u16::from(*y) > 255 || offset1 != offset2 {
                         None
                     } else {
                         Some(Node::Dec(x + y, *offset1, false))
@@ -314,9 +314,9 @@ impl OptimizationStep for DeferMovements {
                 for node in group {
                     match node {
                         Node::Shift(v) => {
-                            let sum = current_offset as i64 + v as i64;
+                            let sum = i64::from(current_offset) + i64::from(v);
 
-                            if sum >= i32::min_value() as i64 && sum <= i32::max_value() as i64 {
+                            if sum >= i64::from(i32::min_value()) && sum <= i64::from(i32::max_value()) {
                                 current_offset = sum as i32;
                             } else {
                                 memo.push(Node::Shift(current_offset));
@@ -392,7 +392,7 @@ impl OptimizationStep for DeferMovements {
 pub struct CollapseSimpleLoops;
 
 impl CollapseSimpleLoops {
-    fn is_collapsible_loop(body: &Vec<Node>) -> bool {
+    fn is_collapsible_loop(body: &[Node]) -> bool {
         let has_only_allowed_elements = body.into_iter().fold(true, |memo, node| match node {
             Node::Inc(_, _, false) => memo,
             Node::Dec(_, _, false) => memo,
@@ -416,10 +416,10 @@ impl OptimizationStep for CollapseSimpleLoops {
                             .flat_map(|node| match node {
                                 Node::Dec(1, 0, false) => None,
                                 Node::Inc(value, offset, false) => {
-                                    Some(Node::Mul(*value as i16, *offset, 0, false))
+                                    Some(Node::Mul(i16::from(*value), *offset, 0, false))
                                 }
                                 Node::Dec(value, offset, false) => {
-                                    Some(Node::Mul(-(*value as i16), *offset, 0, false))
+                                    Some(Node::Mul(- i16::from(*value), *offset, 0, false))
                                 }
                                 _ => None,
                             }).collect();
