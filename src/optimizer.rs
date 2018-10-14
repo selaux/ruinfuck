@@ -12,13 +12,13 @@ pub struct OptimizationOptions {
 
 impl Default for OptimizationOptions {
     fn default() -> Self {
-        return OptimizationOptions {
+        OptimizationOptions {
             collapsed_operators: true,
             collapsed_assignments: true,
             collapsed_offsets: true,
             collapsed_loops: true,
             collapsed_scan_loops: true,
-        };
+        }
     }
 }
 
@@ -197,19 +197,17 @@ impl OptimizationStep for CollapseOffsets {
 
                                 if diff == 0 {
                                     Some(vec![build_node(*value, *offset, false)])
+                                } else if diff > 0 {
+                                    Some(vec![
+                                        shift,
+                                        build_node(
+                                            *value,
+                                            *offset - offset.signum() * diff,
+                                            false,
+                                        ),
+                                    ])
                                 } else {
-                                    if diff > 0 {
-                                        Some(vec![
-                                            shift,
-                                            build_node(
-                                                *value,
-                                                *offset - offset.signum() * diff,
-                                                false,
-                                            ),
-                                        ])
-                                    } else {
-                                        Some(vec![build_node(*value, *offset, false), shift])
-                                    }
+                                    Some(vec![build_node(*value, *offset, false), shift])
                                 }
                             } else {
                                 None
@@ -229,15 +227,13 @@ impl OptimizationStep for CollapseOffsets {
 
                                 if diff == 0 {
                                     Some(vec![build_node(*offset, false)])
+                                } else if diff > 0 {
+                                    Some(vec![
+                                        shift,
+                                        build_node(*offset - offset.signum() * diff, false),
+                                    ])
                                 } else {
-                                    if diff > 0 {
-                                        Some(vec![
-                                            shift,
-                                            build_node(*offset - offset.signum() * diff, false),
-                                        ])
-                                    } else {
-                                        Some(vec![build_node(*offset, false), shift])
-                                    }
+                                    Some(vec![build_node(*offset, false), shift])
                                 }
                             } else {
                                 None
@@ -398,15 +394,14 @@ pub struct CollapseSimpleLoops;
 impl CollapseSimpleLoops {
     fn is_collapsible_loop(body: &Vec<Node>) -> bool {
         let has_only_allowed_elements = body.into_iter().fold(true, |memo, node| match node {
-            Node::Inc(_, _, false) => memo && true,
-            Node::Dec(_, _, false) => memo && true,
+            Node::Inc(_, _, false) => memo,
+            Node::Dec(_, _, false) => memo,
             _ => false,
         });
         let contains_iterator = body
             .into_iter()
-            .find(|&x| *x == Node::Dec(1, 0, false))
-            .is_some();
-        body.len() > 0 && has_only_allowed_elements && contains_iterator
+            .any(|x| x == &Node::Dec(1, 0, false));
+        !body.is_empty() && has_only_allowed_elements && contains_iterator
     }
 }
 

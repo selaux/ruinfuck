@@ -34,7 +34,7 @@ pub fn run_code<F: BufRead, R: Read, W: Write>(
     // println!("Optimized: {:?}", (analyzer::SimpleAnalyzer {}).analyze(&optimized));
     // println!("Code: {:?}", optimized);
 
-    return vm::run_block(stdin, stdout, &optimized, s).map_err(ExecutionError::Run);
+    vm::run_block(stdin, stdout, &optimized, s).map_err(ExecutionError::Run)
 }
 
 fn start_script(path: &str) -> Result<(), ExecutionError> {
@@ -98,7 +98,7 @@ fn start_repl() {
 }
 
 fn main() {
-    let first_arg = env::args().skip(1).next();
+    let first_arg = env::args().nth(1);
 
     if let Some(path) = first_arg {
         start_script(&path).map_err(|e| format!("{:?}", e)).unwrap();

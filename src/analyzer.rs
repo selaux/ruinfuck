@@ -41,7 +41,7 @@ impl Analyzer for SimpleAnalyzer {
     fn analyze(&self, code: &[Node]) -> AnalysisResults {
         code.into_iter()
             .fold(AnalysisResults::default(), move |mut memo, v| {
-                memo.total = memo.total + 1;
+                memo.total += 1;
 
                 {
                     let entry = match v {
