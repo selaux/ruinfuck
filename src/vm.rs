@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::{Read, Write};
 
 const NUMBER_OF_CELLS: usize = u16::max_value() as usize;
+const NUMBER_OF_CELLS_I32: i32 = NUMBER_OF_CELLS as i32;
 
 #[derive(Clone)]
 pub struct State {
@@ -96,12 +97,12 @@ pub fn run_block<R: Read, W: Write>(
 
 fn offset_index(pos: usize, offset: i32) -> usize {
     let index = pos as i32 + offset;
-    if index >= 0 && index < NUMBER_OF_CELLS as i32 {
+    if index >= 0 && index < NUMBER_OF_CELLS_I32 {
         index as usize
     } else if index < 0 {
-        (NUMBER_OF_CELLS as i32 + index) as usize
+        (NUMBER_OF_CELLS_I32 + index) as usize
     } else {
-        (index % NUMBER_OF_CELLS as i32) as usize
+        (index % NUMBER_OF_CELLS_I32) as usize
     }
 }
 
@@ -125,8 +126,8 @@ impl Node {
             }
             Node::Inc(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let v = s.cells[pos];
-                s.cells[pos] = v.wrapping_add(i);
+                let mut v = &mut s.cells[pos];
+                *v = v.wrapping_add(i);
                 if move_pointer {
                     s.pos = pos;
                 }
@@ -134,8 +135,8 @@ impl Node {
             }
             Node::Dec(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let v = s.cells[pos];
-                s.cells[pos] = v.wrapping_sub(i);
+                let mut v = &mut s.cells[pos];
+                *v = v.wrapping_sub(i);
                 if move_pointer {
                     s.pos = pos;
                 }
@@ -145,12 +146,13 @@ impl Node {
                 let pos = offset_index(s.pos, offset);
                 let into_pos = offset_index(pos, into);
                 let v = s.cells[pos];
+                let mut into = &mut s.cells[into_pos];
                 let abs = mul_value.abs() as u8;
 
                 if mul_value >= 0 {
-                    s.cells[into_pos] = s.cells[into_pos].wrapping_add(v.wrapping_mul(abs));
+                    *into = into.wrapping_add(v.wrapping_mul(abs));
                 } else {
-                    s.cells[into_pos] = s.cells[into_pos].wrapping_sub(v.wrapping_mul(abs));
+                    *into = into.wrapping_sub(v.wrapping_mul(abs));
                 }
                 if move_pointer {
                     s.pos = pos;
