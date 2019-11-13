@@ -39,7 +39,7 @@ pub struct SimpleAnalyzer {}
 
 impl Analyzer for SimpleAnalyzer {
     fn analyze(&self, code: &[Node]) -> AnalysisResults {
-        code.into_iter()
+        code.iter()
             .fold(AnalysisResults::default(), move |mut memo, v| {
                 memo.total += 1;
 

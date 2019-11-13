@@ -34,12 +34,13 @@ pub struct FilterComments;
 
 impl OptimizationStep for FilterComments {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter()
+        code.iter()
             .flat_map(move |n| match n {
                 Node::Comment(_) => None,
                 Node::Conditional(body) => Some(Node::Conditional(self.apply(body))),
                 n => Some(n.clone()),
-            }).collect()
+            })
+            .collect()
     }
 }
 
@@ -52,7 +53,7 @@ pub struct MergeRepeatedOperators;
 
 impl OptimizationStep for MergeRepeatedOperators {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter().fold(vec![], move |mut acc, node| {
+        code.iter().fold(vec![], move |mut acc, node| {
             let last = acc.pop();
 
             let merged = match (&last, &node) {
@@ -108,7 +109,7 @@ pub struct CollapseAssignments;
 
 impl OptimizationStep for CollapseAssignments {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter()
+        code.iter()
             .map(move |n| match n {
                 Node::Conditional(body) => {
                     if body == &[Node::Dec(1, 0, false)] {
@@ -118,7 +119,8 @@ impl OptimizationStep for CollapseAssignments {
                     }
                 }
                 n => n.clone(),
-            }).fold(vec![], move |mut acc, c| {
+            })
+            .fold(vec![], move |mut acc, c| {
                 let last = acc.pop();
                 let value = match (&last, &c) {
                     (Some(Node::Assign(0, offset1, false)), Node::Inc(inc_val, offset2, false)) => {
@@ -164,7 +166,7 @@ pub struct CollapseOffsets;
 
 impl OptimizationStep for CollapseOffsets {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter().fold(vec![], move |mut acc, node| {
+        code.iter().fold(vec![], move |mut acc, node| {
             let last = acc.pop();
             let new_node = match node {
                 Node::Conditional(body) => Node::Conditional(self.apply(body)),
@@ -200,11 +202,7 @@ impl OptimizationStep for CollapseOffsets {
                                 } else if diff > 0 {
                                     Some(vec![
                                         shift,
-                                        build_node(
-                                            *value,
-                                            *offset - offset.signum() * diff,
-                                            false,
-                                        ),
+                                        build_node(*value, *offset - offset.signum() * diff, false),
                                     ])
                                 } else {
                                     Some(vec![build_node(*value, *offset, false), shift])
@@ -273,35 +271,33 @@ pub struct DeferMovements;
 
 impl OptimizationStep for DeferMovements {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        let (mut memo, rest) = code
-            .into_iter()
-            .fold((vec![], vec![]), move |memo, new_node| {
-                let (mut memo, mut current_block) = memo;
+        let (mut memo, rest) = code.iter().fold((vec![], vec![]), move |memo, new_node| {
+            let (mut memo, mut current_block) = memo;
 
-                match new_node {
-                    Node::Shift(_)
-                    | Node::Inc(_, _, _)
-                    | Node::Dec(_, _, _)
-                    | Node::Mul(_, _, _, _)
-                    | Node::Assign(_, _, _)
-                    | Node::In(_, _)
-                    | Node::Out(_, _)
-                    | Node::Comment(_) => {
-                        current_block.push(new_node.clone());
-                    }
-                    Node::Scan(i) => {
-                        memo.push(current_block);
-                        memo.push(vec![Node::Scan(*i)]);
-                        current_block = vec![];
-                    }
-                    Node::Conditional(body) => {
-                        memo.push(current_block);
-                        memo.push(vec![Node::Conditional(self.apply(body))]);
-                        current_block = vec![];
-                    }
+            match new_node {
+                Node::Shift(_)
+                | Node::Inc(_, _, _)
+                | Node::Dec(_, _, _)
+                | Node::Mul(_, _, _, _)
+                | Node::Assign(_, _, _)
+                | Node::In(_, _)
+                | Node::Out(_, _)
+                | Node::Comment(_) => {
+                    current_block.push(new_node.clone());
                 }
-                (memo, current_block)
-            });
+                Node::Scan(i) => {
+                    memo.push(current_block);
+                    memo.push(vec![Node::Scan(*i)]);
+                    current_block = vec![];
+                }
+                Node::Conditional(body) => {
+                    memo.push(current_block);
+                    memo.push(vec![Node::Conditional(self.apply(body))]);
+                    current_block = vec![];
+                }
+            }
+            (memo, current_block)
+        });
 
         memo.push(rest);
 
@@ -316,7 +312,9 @@ impl OptimizationStep for DeferMovements {
                         Node::Shift(v) => {
                             let sum = i64::from(current_offset) + i64::from(v);
 
-                            if sum >= i64::from(i32::min_value()) && sum <= i64::from(i32::max_value()) {
+                            if sum >= i64::from(i32::min_value())
+                                && sum <= i64::from(i32::max_value())
+                            {
                                 current_offset = sum as i32;
                             } else {
                                 memo.push(Node::Shift(current_offset));
@@ -393,36 +391,35 @@ pub struct CollapseSimpleLoops;
 
 impl CollapseSimpleLoops {
     fn is_collapsible_loop(body: &[Node]) -> bool {
-        let has_only_allowed_elements = body.into_iter().fold(true, |memo, node| match node {
+        let has_only_allowed_elements = body.iter().fold(true, |memo, node| match node {
             Node::Inc(_, _, false) => memo,
             Node::Dec(_, _, false) => memo,
             _ => false,
         });
-        let contains_iterator = body
-            .into_iter()
-            .any(|x| x == &Node::Dec(1, 0, false));
+        let contains_iterator = body.iter().any(|x| x == &Node::Dec(1, 0, false));
         !body.is_empty() && has_only_allowed_elements && contains_iterator
     }
 }
 
 impl OptimizationStep for CollapseSimpleLoops {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter()
+        code.iter()
             .map(|node| match node {
                 Node::Conditional(body) => {
                     if Self::is_collapsible_loop(&body) {
                         let mut moves: Vec<Node> = body
-                            .into_iter()
+                            .iter()
                             .flat_map(|node| match node {
                                 Node::Dec(1, 0, false) => None,
                                 Node::Inc(value, offset, false) => {
                                     Some(Node::Mul(i16::from(*value), *offset, 0, false))
                                 }
                                 Node::Dec(value, offset, false) => {
-                                    Some(Node::Mul(- i16::from(*value), *offset, 0, false))
+                                    Some(Node::Mul(-i16::from(*value), *offset, 0, false))
                                 }
                                 _ => None,
-                            }).collect();
+                            })
+                            .collect();
 
                         moves.push(Node::Assign(0, 0, false));
 
@@ -432,7 +429,8 @@ impl OptimizationStep for CollapseSimpleLoops {
                     }
                 }
                 n => vec![n.clone()],
-            }).fold(vec![], |mut memo, new| {
+            })
+            .fold(vec![], |mut memo, new| {
                 for n in new {
                     memo.push(n);
                 }
@@ -452,19 +450,20 @@ pub struct CollapseScanLoops;
 
 impl OptimizationStep for CollapseScanLoops {
     fn apply(&self, code: &[Node]) -> Vec<Node> {
-        code.into_iter()
+        code.iter()
             .map(|n| match n {
                 Node::Conditional(body) => match body.as_slice() {
                     [Node::Shift(i)] => Node::Scan(*i),
                     body => Node::Conditional(self.apply(body)),
                 },
                 c => c.clone(),
-            }).collect()
+            })
+            .collect()
     }
 }
 
 pub fn optimize_code(code: &[Node], options: &OptimizationOptions) -> Vec<Node> {
-    let mut optimizations: Vec<Box<OptimizationStep>> = vec![];
+    let mut optimizations: Vec<Box<dyn OptimizationStep>> = vec![];
 
     optimizations.push(Box::new(FilterComments));
     if options.collapsed_operators {

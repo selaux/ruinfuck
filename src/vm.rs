@@ -30,7 +30,6 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let cell_count = 25;
         let cells_to_show: Vec<usize> = (0..25)
-            .into_iter()
             .map(|i| {
                 let offset = cell_count / 2;
                 let pos: i64 = self.pos as i64 + i - offset;
@@ -42,7 +41,8 @@ impl fmt::Display for State {
                 } else {
                     pos as usize
                 }
-            }).collect();
+            })
+            .collect();
 
         f.write_str("Brainfuck state:\n")?;
         f.write_str("|")?;
@@ -126,7 +126,7 @@ impl Node {
             }
             Node::Inc(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let mut v = &mut s.cells[pos];
+                let v = &mut s.cells[pos];
                 *v = v.wrapping_add(i);
                 if move_pointer {
                     s.pos = pos;
@@ -135,7 +135,7 @@ impl Node {
             }
             Node::Dec(i, offset, move_pointer) => {
                 let pos = offset_index(s.pos, offset);
-                let mut v = &mut s.cells[pos];
+                let v = &mut s.cells[pos];
                 *v = v.wrapping_sub(i);
                 if move_pointer {
                     s.pos = pos;
@@ -146,7 +146,7 @@ impl Node {
                 let pos = offset_index(s.pos, offset);
                 let into_pos = offset_index(pos, into);
                 let v = s.cells[pos];
-                let mut into = &mut s.cells[into_pos];
+                let into = &mut s.cells[into_pos];
                 let abs = mul_value.abs() as u8;
 
                 if mul_value >= 0 {
@@ -695,11 +695,11 @@ mod tests {
 
     #[test]
     fn it_should_read_from_stdin() {
-        let stdin = vec!['b' as u8];
+        let stdin = vec![b'b'];
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -709,16 +709,16 @@ mod tests {
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[1..], initial_state.cells[1..]);
-        assert_eq!(s.cells[0], 'b' as u8);
+        assert_eq!(s.cells[0], b'b');
     }
 
     #[test]
     fn it_should_read_from_stdin_with_offset() {
-        let stdin = vec!['b' as u8];
+        let stdin = vec![b'b'];
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -728,17 +728,17 @@ mod tests {
 
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
-        assert_eq!(s.cells[0], 'a' as u8);
-        assert_eq!(s.cells[1], 'b' as u8);
+        assert_eq!(s.cells[0], b'a');
+        assert_eq!(s.cells[1], b'b');
     }
 
     #[test]
     fn it_should_read_from_stdin_with_offset_and_move_pointer() {
-        let stdin = vec!['b' as u8];
+        let stdin = vec![b'b'];
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -748,8 +748,8 @@ mod tests {
 
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[2..], initial_state.cells[2..]);
-        assert_eq!(s.cells[0], 'a' as u8);
-        assert_eq!(s.cells[1], 'b' as u8);
+        assert_eq!(s.cells[0], b'a');
+        assert_eq!(s.cells[1], b'b');
     }
 
     #[test]
@@ -758,7 +758,7 @@ mod tests {
         let mut stdout = vec![];
         let initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
         let mut s = initial_state.clone();
 
@@ -769,7 +769,7 @@ mod tests {
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(stdout.len(), 1);
-        assert_eq!(stdout.get(0), Some(&('a' as u8)));
+        assert_eq!(stdout.get(0), Some(&(b'a')));
     }
 
     #[test]
@@ -778,9 +778,9 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
-        initial_state.cells[1] = 'b' as u8;
+        initial_state.cells[1] = b'b';
 
         let mut s = initial_state.clone();
 
@@ -791,7 +791,7 @@ mod tests {
         assert_eq!(s.pos, initial_state.pos);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(stdout.len(), 1);
-        assert_eq!(stdout.get(0), Some(&('b' as u8)));
+        assert_eq!(stdout.get(0), Some(&(b'b')));
     }
 
     #[test]
@@ -800,9 +800,9 @@ mod tests {
         let mut stdout = vec![];
         let mut initial_state = State {
             pos: 0,
-            cells: ['a' as u8; NUMBER_OF_CELLS],
+            cells: [b'a'; NUMBER_OF_CELLS],
         };
-        initial_state.cells[1] = 'b' as u8;
+        initial_state.cells[1] = b'b';
 
         let mut s = initial_state.clone();
 
@@ -813,7 +813,7 @@ mod tests {
         assert_eq!(s.pos, 1);
         assert_eq!(s.cells[0..], initial_state.cells[0..]);
         assert_eq!(stdout.len(), 1);
-        assert_eq!(stdout.get(0), Some(&('b' as u8)));
+        assert_eq!(stdout.get(0), Some(&(b'b')));
     }
 
     #[test]
