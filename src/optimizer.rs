@@ -57,14 +57,7 @@ impl OptimizationStep for MergeRepeatedOperators {
             let last = acc.pop();
 
             let merged = match (&last, &node) {
-                (Some(Node::Shift(x)), Node::Shift(y)) => {
-                    let diff = i64::from(*x) + i64::from(*y);
-                    if diff >= i64::from(i32::min_value()) && diff <= i64::from(i32::max_value()) {
-                        Some(Node::Shift(x + y))
-                    } else {
-                        None
-                    }
-                }
+                (Some(Node::Shift(x)), Node::Shift(y)) => Some(Node::Shift(x + y)),
                 (Some(Node::Inc(x, offset1, false)), Node::Inc(y, offset2, false)) => {
                     if u16::from(*x) + u16::from(*y) > 255 || offset1 != offset2 {
                         None
@@ -174,11 +167,11 @@ impl OptimizationStep for CollapseOffsets {
             };
             let modified = match &last {
                 Some(Node::Shift(offset)) => match new_node {
-                    Node::Inc(v, 0, false) => Some(vec![Node::Inc(v, *offset as i32, true)]),
-                    Node::Dec(v, 0, false) => Some(vec![Node::Dec(v, *offset as i32, true)]),
-                    Node::Assign(v, 0, false) => Some(vec![Node::Assign(v, *offset as i32, true)]),
-                    Node::Out(0, false) => Some(vec![Node::Out(*offset as i32, true)]),
-                    Node::In(0, false) => Some(vec![Node::In(*offset as i32, true)]),
+                    Node::Inc(v, 0, false) => Some(vec![Node::Inc(v, *offset, true)]),
+                    Node::Dec(v, 0, false) => Some(vec![Node::Dec(v, *offset, true)]),
+                    Node::Assign(v, 0, false) => Some(vec![Node::Assign(v, *offset, true)]),
+                    Node::Out(0, false) => Some(vec![Node::Out(*offset, true)]),
+                    Node::In(0, false) => Some(vec![Node::In(*offset, true)]),
                     _ => None,
                 },
                 Some(old_node) => match new_node {
@@ -305,21 +298,12 @@ impl OptimizationStep for DeferMovements {
             if group.len() == 1 {
                 memo.push(group.first().unwrap().clone());
             } else {
-                let mut current_offset: i32 = 0;
+                let mut current_offset: isize = 0;
 
                 for node in group {
                     match node {
                         Node::Shift(v) => {
-                            let sum = i64::from(current_offset) + i64::from(v);
-
-                            if sum >= i64::from(i32::min_value())
-                                && sum <= i64::from(i32::max_value())
-                            {
-                                current_offset = sum as i32;
-                            } else {
-                                memo.push(Node::Shift(current_offset));
-                                current_offset = v;
-                            }
+                            current_offset += v;
                         }
                         Node::Dec(v, offset, move_pointer)
                         | Node::Inc(v, offset, move_pointer)
@@ -575,18 +559,6 @@ mod tests {
                 ))
             )
         );
-    }
-
-    #[test]
-    fn it_should_not_optimize_operators_that_would_overflow() {
-        let code = vec![
-            Node::Shift(i32::max_value() - 1),
-            Node::Shift(1),
-            Node::Shift(1),
-        ];
-        let result = optimize_code(&code, &OptimizationOptions::default());
-
-        assert_eq!(result, vec!(Node::Shift(i32::max_value()), Node::Shift(1)));
     }
 
     #[test]

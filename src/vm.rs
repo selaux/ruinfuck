@@ -3,19 +3,18 @@ use std::fmt;
 use std::io::{Read, Write};
 
 const NUMBER_OF_CELLS: usize = u16::max_value() as usize;
-const NUMBER_OF_CELLS_I32: i32 = NUMBER_OF_CELLS as i32;
 
 #[derive(Clone)]
 pub struct State {
     pub pos: usize,
-    pub cells: [u8; NUMBER_OF_CELLS],
+    pub cells: [u8; NUMBER_OF_CELLS as usize],
 }
 
 impl Default for State {
     fn default() -> Self {
         State {
             pos: 0,
-            cells: [0; NUMBER_OF_CELLS],
+            cells: [0; NUMBER_OF_CELLS as usize],
         }
     }
 }
@@ -70,15 +69,15 @@ impl fmt::Display for State {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
-    Shift(i32),
+    Shift(isize),
     // value, (offset_to), offset, move_pointer
-    Inc(u8, i32, bool),
-    Dec(u8, i32, bool),
-    Mul(i16, i32, i32, bool),
-    Assign(u8, i32, bool),
-    Scan(i32),
-    Out(i32, bool),
-    In(i32, bool),
+    Inc(u8, isize, bool),
+    Dec(u8, isize, bool),
+    Mul(i16, isize, isize, bool),
+    Assign(u8, isize, bool),
+    Scan(isize),
+    Out(isize, bool),
+    In(isize, bool),
     Conditional(Vec<Node>),
     Comment(char),
 }
@@ -95,15 +94,8 @@ pub fn run_block<R: Read, W: Write>(
     Ok(())
 }
 
-fn offset_index(pos: usize, offset: i32) -> usize {
-    let index = pos as i32 + offset;
-    if index >= 0 && index < NUMBER_OF_CELLS_I32 {
-        index as usize
-    } else if index < 0 {
-        (NUMBER_OF_CELLS_I32 + index) as usize
-    } else {
-        (index % NUMBER_OF_CELLS_I32) as usize
-    }
+fn offset_index(pos: usize, offset: isize) -> usize {
+    (pos as u16).wrapping_add(offset as u16) as usize
 }
 
 impl Node {
