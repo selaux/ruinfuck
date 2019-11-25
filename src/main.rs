@@ -53,7 +53,8 @@ fn start_script(path: &str) -> Result<(), ExecutionError> {
         &mut stdin.lock(),
         &mut stdout.lock(),
         &mut state,
-    ).expect("Error interpreting");
+    )
+    .expect("Error interpreting");
 
     Ok(())
 }
