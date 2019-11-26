@@ -116,16 +116,42 @@ impl OptimizationStep for CollapseAssignments {
             .fold(vec![], move |mut acc, c| {
                 let last = acc.pop();
                 let value = match (&last, &c) {
-                    (Some(Node::Assign(0, offset1, false)), Node::Inc(inc_val, offset2, false)) => {
+                    (
+                        Some(Node::Assign(value, offset1, false)),
+                        Node::Inc(inc_val, offset2, false),
+                    ) => {
                         if offset1 == offset2 {
-                            Some(Node::Assign(*inc_val, *offset1, false))
+                            Some(Node::Assign(value + inc_val, *offset1, false))
                         } else {
                             None
                         }
                     }
-                    (Some(Node::Assign(0, offset1, false)), Node::Dec(dec_val, offset2, false)) => {
+                    (
+                        Some(Node::Assign(value, offset1, false)),
+                        Node::Dec(dec_val, offset2, false),
+                    ) => {
                         if offset1 == offset2 {
-                            Some(Node::Assign(0u8.wrapping_sub(*dec_val), *offset1, false))
+                            Some(Node::Assign(value.wrapping_sub(*dec_val), *offset1, false))
+                        } else {
+                            None
+                        }
+                    }
+                    (
+                        Some(Node::Assign(value, offset1, false)),
+                        Node::Mul(mul_value, into_offset, offset2, false),
+                    ) => {
+                        if offset1 == offset2 && offset1 == into_offset {
+                            let abs = mul_value.abs() as u8;
+
+                            Some(Node::Assign(
+                                if *mul_value >= 0 {
+                                    value.wrapping_add(value.wrapping_mul(abs))
+                                } else {
+                                    value.wrapping_sub(value.wrapping_mul(abs))
+                                },
+                                *offset1,
+                                false,
+                            ))
                         } else {
                             None
                         }
@@ -166,12 +192,30 @@ impl OptimizationStep for CollapseOffsets {
                 n => n.clone(),
             };
             let modified = match &last {
-                Some(Node::Shift(offset)) => match new_node {
-                    Node::Inc(v, 0, false) => Some(vec![Node::Inc(v, *offset, true)]),
-                    Node::Dec(v, 0, false) => Some(vec![Node::Dec(v, *offset, true)]),
-                    Node::Assign(v, 0, false) => Some(vec![Node::Assign(v, *offset, true)]),
-                    Node::Out(0, false) => Some(vec![Node::Out(*offset, true)]),
-                    Node::In(0, false) => Some(vec![Node::In(*offset, true)]),
+                Some(Node::Shift(shift_offset)) => match new_node {
+                    Node::Inc(v, node_offset, false) => Some(vec![Node::Inc(
+                        v,
+                        node_offset.wrapping_add(*shift_offset),
+                        true,
+                    )]),
+                    Node::Dec(v, node_offset, false) => Some(vec![Node::Dec(
+                        v,
+                        node_offset.wrapping_add(*shift_offset),
+                        true,
+                    )]),
+                    Node::Assign(v, node_offset, false) => Some(vec![Node::Assign(
+                        v,
+                        node_offset.wrapping_add(*shift_offset),
+                        true,
+                    )]),
+                    Node::Out(node_offset, false) => Some(vec![Node::Out(
+                        node_offset.wrapping_add(*shift_offset),
+                        true,
+                    )]),
+                    Node::In(node_offset, false) => Some(vec![Node::In(
+                        node_offset.wrapping_add(*shift_offset),
+                        true,
+                    )]),
                     _ => None,
                 },
                 Some(old_node) => match new_node {
@@ -259,7 +303,7 @@ impl OptimizationStep for CollapseOffsets {
 /// saves a little bit of data pointer movement and will result in a more predictably structured instruction
 /// list.
 ///
-/// For example `Inc(3, 2, true), Inc(3, 2, false)` becomes `Inc(3, 2, false), Inc(3, 2, false), MoveDataPointer(2)`.
+/// For example `Inc(3, 2, true), Inc(3, 2, false)` becomes `Inc(3, 2, false), Inc(3, 4, false), MoveDataPointer(2)`.
 pub struct DeferMovements;
 
 impl OptimizationStep for DeferMovements {
@@ -472,7 +516,7 @@ pub fn optimize_code(code: &[Node], options: &OptimizationOptions) -> Vec<Node> 
     }
 
     let mut c = code.to_owned();
-    for o in optimizations {
+    for o in &optimizations {
         c = o.apply(&c);
     }
 

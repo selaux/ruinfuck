@@ -2,7 +2,7 @@ use std::default::Default;
 use std::fmt;
 use std::io::{Read, Write};
 
-const NUMBER_OF_CELLS: usize = u16::max_value() as usize;
+const NUMBER_OF_CELLS: usize = u16::max_value() as usize + 1;
 
 #[derive(Clone)]
 pub struct State {

@@ -11,6 +11,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 
+// use analyzer::Analyzer;
 use parser::ParserError;
 use vm::{RuntimeError, State};
 
@@ -30,8 +31,14 @@ pub fn run_code<F: BufRead, R: Read, W: Write>(
     let parsed = parser::parse_code(code).map_err(ExecutionError::Parse)?;
     let optimized = optimizer::optimize_code(&parsed, &optimizer::OptimizationOptions::default());
 
-    // println!("Unoptimized: {:?}", (analyzer::SimpleAnalyzer {}).analyze(&parsed));
-    // println!("Optimized: {:?}", (analyzer::SimpleAnalyzer {}).analyze(&optimized));
+    // println!(
+    //     "Unoptimized: {:?}",
+    //     (analyzer::SimpleAnalyzer {}).analyze(&parsed)
+    // );
+    // println!(
+    //     "Optimized: {:?}",
+    //     (analyzer::SimpleAnalyzer {}).analyze(&optimized)
+    // );
     // println!("Code: {:?}", optimized);
 
     vm::run_block(stdin, stdout, &optimized, s).map_err(ExecutionError::Run)
